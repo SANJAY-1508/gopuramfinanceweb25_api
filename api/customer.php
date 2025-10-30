@@ -125,6 +125,7 @@ elseif (isset($obj['edit_customer_id'])) {
     $account_number = $conn->real_escape_string(trim($obj['account_number'] ?? ''));
     $ifsc_code = $conn->real_escape_string(trim($obj['ifsc_code'] ?? ''));
     $branch_name = $conn->real_escape_string(trim($obj['branch_name'] ?? ''));
+    $by_name = isset($obj['user_name']) ? $conn->real_escape_string(trim($obj['user_name'])) : '';
 
     // Fetch old row for history
     $old_json = null;
@@ -138,17 +139,7 @@ elseif (isset($obj['edit_customer_id'])) {
     }
     $stmt_old->close();
 
-    // Fetch user name for history
-    $by_name = '';
-    $sql_user = "SELECT `user_name` FROM `users` WHERE `id` = ?";
-    $stmt_user = $conn->prepare($sql_user);
-    $stmt_user->bind_param("s", $login_id);
-    $stmt_user->execute();
-    $user_result = $stmt_user->get_result();
-    if ($user_row = $user_result->fetch_assoc()) {
-        $by_name = $user_row['user_name'];
-    }
-    $stmt_user->close();
+
 
     $proofPaths = [];
     $proofBase64Codes = [];
@@ -362,19 +353,8 @@ elseif (isset($obj['edit_customer_id'])) {
     $account_number = $conn->real_escape_string(trim($obj['account_number'] ?? ''));
     $ifsc_code = $conn->real_escape_string(trim($obj['ifsc_code'] ?? ''));
     $branch_name = $conn->real_escape_string(trim($obj['branch_name'] ?? ''));
+    $by_name = isset($obj['user_name']) ? $conn->real_escape_string(trim($obj['user_name'])) : '';
 
-
-    // Fetch user name for history
-    $by_name = '';
-    $sql_user = "SELECT `user_name` FROM `users` WHERE `id` = ?";
-    $stmt_user = $conn->prepare($sql_user);
-    $stmt_user->bind_param("s", $login_id);
-    $stmt_user->execute();
-    $user_result = $stmt_user->get_result();
-    if ($user_row = $user_result->fetch_assoc()) {
-        $by_name = $user_row['user_name'];
-    }
-    $stmt_user->close();
 
     $proofPaths = [];
     $proofBase64Codes = [];
@@ -604,6 +584,7 @@ elseif (isset($obj['delete_customer_id'])) {
         exit;
     }
     $login_id = $conn->real_escape_string(trim($obj['login_id']));
+    $by_name = isset($obj['user_name']) ? $conn->real_escape_string(trim($obj['user_name'])) : '';
     $delete_customer_id = $conn->real_escape_string(trim($obj['delete_customer_id']));
 
     // Fetch old row for history
@@ -620,17 +601,7 @@ elseif (isset($obj['delete_customer_id'])) {
     }
     $stmt_old->close();
 
-    // Fetch user name for history
-    $by_name = '';
-    $sql_user = "SELECT `user_name` FROM `users` WHERE `id` = ?";
-    $stmt_user = $conn->prepare($sql_user);
-    $stmt_user->bind_param("s", $login_id);
-    $stmt_user->execute();
-    $user_result = $stmt_user->get_result();
-    if ($user_row = $user_result->fetch_assoc()) {
-        $by_name = $user_row['user_name'];
-    }
-    $stmt_user->close();
+
 
     if (!empty($delete_customer_id)) {
         $sql = "UPDATE `customer` SET `delete_at`=1, `deleted_by_id`=? WHERE `customer_id`=? AND `delete_at`=0";

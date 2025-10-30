@@ -46,9 +46,16 @@ ORDER BY
 // <<<<<<<<<<===================== Create or Update Recovery Record =====================>>>>>>>>>>
 
 elseif (isset($obj->receipt_no)) {
-    // --------------------------
-    // 🟢 Input Sanitize & Prepare
-    // --------------------------
+
+    if (!isset($obj->login_id) || empty(trim($obj->login_id))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+
+    $login_id = $conn->real_escape_string(trim($obj->login_id));
+    $by_name = isset($obj->user_name) ? $conn->real_escape_string(trim($obj->user_name)) : '';
     $edit_id = $conn->real_escape_string($obj->edit_pawnrecovery_id ?? '');
     $receipt_no = $conn->real_escape_string($obj->receipt_no);
     $pawnjewelry_date = $conn->real_escape_string($obj->pawnjewelry_date);
@@ -74,9 +81,18 @@ elseif (isset($obj->receipt_no)) {
     $type = "varavu";
     $timestamp = date('Y-m-d H:i:s');
 
-    // ------------------------
-    // 🟢 Insert (New Record)
-    // ------------------------
+    // Fetch customer_no from pawnjewelry
+    $customer_no_stmt = $conn->prepare("SELECT customer_no FROM pawnjewelry WHERE receipt_no = ? AND delete_at = 0");
+    $customer_no_stmt->bind_param("s", $receipt_no);
+    $customer_no_stmt->execute();
+    $customer_no_result = $customer_no_stmt->get_result();
+    $customer_no = '';
+    if ($customer_no_row = $customer_no_result->fetch_assoc()) {
+        $customer_no = $customer_no_row['customer_no'];
+    }
+    $customer_no_stmt->close();
+
+
     if ($edit_id === "") {
         // Validate pawnjewelry record
         $checkInterestStmt = $conn->prepare("SELECT `interest_payment_amount` FROM `pawnjewelry` WHERE `receipt_no` = ? AND `delete_at` = 0");
@@ -123,6 +139,22 @@ elseif (isset($obj->receipt_no)) {
                 $updateStmt->execute();
                 $updateStmt->close();
 
+                // Fetch the new row after insert and set pawnjewelry_recovery_id
+                $new_json = null;
+                $sql_new = "SELECT * FROM `pawnjewelry_recovery` WHERE `pawnjewelry_recovery_id` = ? AND `delete_at` = 0";
+                $stmt_new = $conn->prepare($sql_new);
+                $stmt_new->bind_param("s", $uniqueRecoveryID);
+                $stmt_new->execute();
+                $new_result = $stmt_new->get_result();
+                if ($new_row = $new_result->fetch_assoc()) {
+                    $new_json = json_encode($new_row);
+                }
+                $stmt_new->close();
+
+                // Log to history
+                $remarks = "Recovery created";
+                logCustomerHistory($conn, $uniqueRecoveryID, $customer_no, "create", null, $new_json, $remarks, $login_id, $by_name);
+
                 // Update pawnjewelry status
                 $statusStmt = $conn->prepare("UPDATE `pawnjewelry` SET `status` = 'நகை மீட்கபட்டது' WHERE `receipt_no` = ? AND `delete_at` = 0");
                 $statusStmt->bind_param("s", $receipt_no);
@@ -155,6 +187,29 @@ elseif (isset($obj->receipt_no)) {
     // 🟢 Update (Edit Existing)
     // ----------------------------
     else {
+        // Fetch customer_no from pawnjewelry
+        $customer_no_stmt = $conn->prepare("SELECT customer_no FROM pawnjewelry WHERE receipt_no = ? AND delete_at = 0");
+        $customer_no_stmt->bind_param("s", $receipt_no);
+        $customer_no_stmt->execute();
+        $customer_no_result = $customer_no_stmt->get_result();
+        $customer_no = '';
+        if ($customer_no_row = $customer_no_result->fetch_assoc()) {
+            $customer_no = $customer_no_row['customer_no'];
+        }
+        $customer_no_stmt->close();
+
+        // Fetch old row for history
+        $old_json = null;
+        $sql_old = "SELECT * FROM `pawnjewelry_recovery` WHERE `pawnjewelry_recovery_id` = ? AND `delete_at` = 0";
+        $stmt_old = $conn->prepare($sql_old);
+        $stmt_old->bind_param("s", $edit_id);
+        $stmt_old->execute();
+        $old_result = $stmt_old->get_result();
+        if ($old_row = $old_result->fetch_assoc()) {
+            $old_json = json_encode($old_row);
+        }
+        $stmt_old->close();
+
         $updateStmt = $conn->prepare("UPDATE `pawnjewelry_recovery` SET 
             `pawnjewelry_date` = ?, `receipt_no` = ?, `name` = ?, `customer_details` = ?, `place` = ?, 
             `mobile_number` = ?, `original_amount` = ?, `interest_rate` = ?, `jewel_product` = ?, 
@@ -182,6 +237,22 @@ elseif (isset($obj->receipt_no)) {
         );
 
         if ($updateStmt->execute()) {
+            // Fetch new row after update
+            $new_json = null;
+            $sql_new = "SELECT * FROM `pawnjewelry_recovery` WHERE `pawnjewelry_recovery_id` = ? AND `delete_at` = 0";
+            $stmt_new = $conn->prepare($sql_new);
+            $stmt_new->bind_param("s", $edit_id);
+            $stmt_new->execute();
+            $new_result = $stmt_new->get_result();
+            if ($new_row = $new_result->fetch_assoc()) {
+                $new_json = json_encode($new_row);
+            }
+            $stmt_new->close();
+
+            // Log to history
+            $remarks = "Recovery updated";
+            logCustomerHistory($conn, $edit_id, $customer_no, "update", $old_json, $new_json, $remarks, $login_id, $by_name);
+
             $output["head"]["code"] = 200;
             $output["head"]["msg"] = "Recovery record updated successfully";
         } else {
@@ -195,6 +266,15 @@ elseif (isset($obj->receipt_no)) {
 
 // <<<<<<<<<<===================== Delete Recovery Record =====================>>>>>>>>>>  
 else if (isset($obj->delete_pawn_recovery_id)) {
+    if (!isset($obj->login_id) || empty(trim($obj->login_id))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+    $login_id = $conn->real_escape_string(trim($obj->login_id));
+    $by_name = isset($obj->user_name) ? $conn->real_escape_string(trim($obj->user_name)) : '';
+
     $delete_pawn_recovery_id = $obj->delete_pawn_recovery_id;
 
     if (!empty($delete_pawn_recovery_id)) {
@@ -207,9 +287,36 @@ else if (isset($obj->delete_pawn_recovery_id)) {
             $row = $result->fetch_assoc();
             $receipt_no = $row['receipt_no'];
 
+            // Fetch customer_no from pawnjewelry
+            $customer_no_stmt = $conn->prepare("SELECT customer_no FROM pawnjewelry WHERE receipt_no = ? AND delete_at = 0");
+            $customer_no_stmt->bind_param("s", $receipt_no);
+            $customer_no_stmt->execute();
+            $customer_no_result = $customer_no_stmt->get_result();
+            $customer_no = '';
+            if ($customer_no_row = $customer_no_result->fetch_assoc()) {
+                $customer_no = $customer_no_row['customer_no'];
+            }
+            $customer_no_stmt->close();
+
+            // Fetch old row for history
+            $old_json = null;
+            $sql_old = "SELECT * FROM `pawnjewelry_recovery` WHERE `pawnjewelry_recovery_id` = ? AND `delete_at` = 0";
+            $stmt_old = $conn->prepare($sql_old);
+            $stmt_old->bind_param("s", $delete_pawn_recovery_id);
+            $stmt_old->execute();
+            $old_result = $stmt_old->get_result();
+            if ($old_row = $old_result->fetch_assoc()) {
+                $old_json = json_encode($old_row);
+            }
+            $stmt_old->close();
+
             // Soft delete the recovery
             $deleteRecovery = "UPDATE `pawnjewelry_recovery` SET `delete_at` = 1 WHERE `pawnjewelry_recovery_id` = '$delete_pawn_recovery_id'";
             if ($conn->query($deleteRecovery)) {
+                // Log to history
+                $remarks = "Recovery deleted";
+                logCustomerHistory($conn, $delete_pawn_recovery_id, $customer_no, "delete", $old_json, null, $remarks, $login_id, $by_name);
+
                 // Update pawnjewelry status back to 'நகை மீட்கபடவில்லை'
                 $statusUpdateStmt = $conn->prepare("UPDATE `pawnjewelry` SET `status` = 'நகை மீட்கபடவில்லை' WHERE `receipt_no` = ? AND `delete_at` = 0");
                 $statusUpdateStmt->bind_param("s", $receipt_no);

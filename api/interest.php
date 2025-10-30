@@ -90,6 +90,16 @@ if (isset($obj->search_text)) {
 }
 // <<<<<<<<<<===================== Create Interest Record =====================>>>>>>>>>>
 elseif (isset($obj->receipt_no) && empty($obj->edit_interest_id)) {
+
+    if (!isset($obj->login_id) || empty(trim($obj->login_id))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+
+    $login_id = $conn->real_escape_string(trim($obj->login_id));
+    $by_name = isset($obj->user_name) ? $conn->real_escape_string(trim($obj->user_name)) : '';
     $receipt_no = $conn->real_escape_string($obj->receipt_no);
     $interest_receive_date = $conn->real_escape_string($obj->interest_receive_date);
     $name = $conn->real_escape_string($obj->name);
@@ -208,6 +218,22 @@ elseif (isset($obj->receipt_no) && empty($obj->edit_interest_id)) {
         $stmt->execute();
         $stmt->close();
 
+        // Fetch the new row after insert and set interest_id
+        $new_json = null;
+        $sql_new = "SELECT * FROM `interest` WHERE `interest_id` = ? AND `delete_at` = 0";
+        $stmt_new = $conn->prepare($sql_new);
+        $stmt_new->bind_param("s", $uniqueInterestID);
+        $stmt_new->execute();
+        $new_result = $stmt_new->get_result();
+        if ($new_row = $new_result->fetch_assoc()) {
+            $new_json = json_encode($new_row);
+        }
+        $stmt_new->close();
+
+        // Log to history
+        $remarks = "Interest created";
+        logCustomerHistory($conn, $uniqueInterestID, $customer_no, "create", null, $new_json, $remarks, $login_id, $by_name);
+
         // Top-up logic
         if ($topup_amount > 0) {
             $pawn_original_amount += $topup_amount;
@@ -270,6 +296,16 @@ elseif (isset($obj->receipt_no) && empty($obj->edit_interest_id)) {
 }
 // <<<<<<<<<<===================== Update Interest Record =====================>>>>>>>>>>
 elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
+
+    if (!isset($obj->login_id) || empty(trim($obj->login_id))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+
+    $login_id = $conn->real_escape_string(trim($obj->login_id));
+    $by_name = isset($obj->user_name) ? $conn->real_escape_string(trim($obj->user_name)) : '';
     $edit_id = $conn->real_escape_string($obj->edit_interest_id);
     $receipt_no = $conn->real_escape_string($obj->receipt_no);
     $interest_receive_date = $conn->real_escape_string($obj->interest_receive_date);
@@ -303,7 +339,7 @@ elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
     }
 
     // Fetch existing interest record
-    $stmt = $conn->prepare("SELECT interest_income, receipt_no FROM interest WHERE interest_id = ? AND delete_at = 0");
+    $stmt = $conn->prepare("SELECT interest_income, receipt_no, customer_no FROM interest WHERE interest_id = ? AND delete_at = 0");
     $stmt->bind_param("s", $edit_id);
     $stmt->execute();
     $prevResult = $stmt->get_result();
@@ -318,6 +354,19 @@ elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
 
     $prevData = $prevResult->fetch_assoc();
     $prev_interest_income = floatval($prevData['interest_income']);
+    $customer_no = $prevData['customer_no'];
+
+    // Fetch old row for history
+    $old_json = null;
+    $sql_old = "SELECT * FROM `interest` WHERE `interest_id` = ? AND `delete_at` = 0";
+    $stmt_old = $conn->prepare($sql_old);
+    $stmt_old->bind_param("s", $edit_id);
+    $stmt_old->execute();
+    $old_result = $stmt_old->get_result();
+    if ($old_row = $old_result->fetch_assoc()) {
+        $old_json = json_encode($old_row);
+    }
+    $stmt_old->close();
 
     $products_json = json_encode($jewel_product, JSON_UNESCAPED_UNICODE);
 
@@ -354,6 +403,22 @@ elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
     );
 
     if ($stmt->execute()) {
+        // Fetch new row after update
+        $new_json = null;
+        $sql_new = "SELECT * FROM `interest` WHERE `interest_id` = ? AND `delete_at` = 0";
+        $stmt_new = $conn->prepare($sql_new);
+        $stmt_new->bind_param("s", $edit_id);
+        $stmt_new->execute();
+        $new_result = $stmt_new->get_result();
+        if ($new_row = $new_result->fetch_assoc()) {
+            $new_json = json_encode($new_row);
+        }
+        $stmt_new->close();
+
+        // Log to history
+        $remarks = "Interest updated";
+        logCustomerHistory($conn, $edit_id, $customer_no, "update", $old_json, $new_json, $remarks, $login_id, $by_name);
+
         // Fetch pawnjewelry record
         $pawnStmt = $conn->prepare("SELECT original_amount, interest_rate, interest_payment_period, interest_payment_amount 
                                     FROM pawnjewelry WHERE receipt_no = ? AND delete_at = 0");
@@ -408,11 +473,21 @@ elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
 
 // <<<<<<<<<<===================== Delete Interest Record =====================>>>>>>>>>>  
 else if (isset($obj->delete_interest_id)) {
+
+    if (!isset($obj->login_id) || empty(trim($obj->login_id))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+
+    $login_id = $conn->real_escape_string(trim($obj->login_id));
+    $by_name = isset($obj->user_name) ? $conn->real_escape_string(trim($obj->user_name)) : '';
     $delete_interest_id = $conn->real_escape_string($obj->delete_interest_id);
 
     if (!empty($delete_interest_id)) {
         // Retrieve receipt_no and interest_income
-        $stmt = $conn->prepare("SELECT receipt_no, interest_income FROM interest WHERE interest_id = ? AND delete_at = 0");
+        $stmt = $conn->prepare("SELECT receipt_no, interest_income, customer_no FROM interest WHERE interest_id = ? AND delete_at = 0");
         $stmt->bind_param("s", $delete_interest_id);
         $stmt->execute();
         $interestResult = $stmt->get_result();
@@ -428,11 +503,28 @@ else if (isset($obj->delete_interest_id)) {
         $interestData = $interestResult->fetch_assoc();
         $receipt_no = $interestData['receipt_no'];
         $deleted_interest_income = floatval($interestData['interest_income']);
+        $customer_no = $interestData['customer_no'];
+
+        // Fetch old row for history
+        $old_json = null;
+        $sql_old = "SELECT * FROM `interest` WHERE `interest_id` = ? AND `delete_at` = 0";
+        $stmt_old = $conn->prepare($sql_old);
+        $stmt_old->bind_param("s", $delete_interest_id);
+        $stmt_old->execute();
+        $old_result = $stmt_old->get_result();
+        if ($old_row = $old_result->fetch_assoc()) {
+            $old_json = json_encode($old_row);
+        }
+        $stmt_old->close();
 
         // Soft-delete interest record
         $stmt = $conn->prepare("UPDATE `interest` SET `delete_at` = 1 WHERE `interest_id` = ?");
         $stmt->bind_param("s", $delete_interest_id);
         if ($stmt->execute()) {
+            // Log to history
+            $remarks = "Interest deleted";
+            logCustomerHistory($conn, $delete_interest_id, $customer_no, "delete", $old_json, null, $remarks, $login_id, $by_name);
+
             // Fetch pawnjewelry record
             $pawnStmt = $conn->prepare("SELECT original_amount, interest_rate, interest_payment_period, interest_payment_amount 
                                         FROM pawnjewelry WHERE receipt_no = ? AND delete_at = 0");

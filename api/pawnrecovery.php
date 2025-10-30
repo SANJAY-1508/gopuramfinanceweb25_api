@@ -177,7 +177,7 @@ elseif (isset($obj->receipt_no)) {
             $output["head"]["code"] = 400;
             $output["head"]["msg"] = "Receipt number already Jewel Recovered exists.";
         }
-    } 
+    }
     // ----------------------------
     // 🟢 Update (Edit Existing)
     // ----------------------------
@@ -193,12 +193,31 @@ elseif (isset($obj->receipt_no)) {
             WHERE `pawnjewelry_recovery_id` = ?");
         $updateStmt->bind_param(
             "ssssssdssdsssssssssddss",
-            $pawnjewelry_date, $receipt_no, $name, $customer_details, $place, $mobile_number,
-            $original_amount, $interest_rate, $products_json, $interest_income, $refund_amount, 
-            $other_amount, $pawnjewelry_recovery_date, $interest_payment_periods, 
-            $bank_pledge_date, $bank_assessor_name, $bank_name, $bank_pawn_value, 
-            $bank_interest, $bank_duration, $bank_additional_charges, $location, 
-            $bank_paid_interest_amount, $bank_recovery_pawn_amount, $edit_id
+            $pawnjewelry_date,
+            $receipt_no,
+            $name,
+            $customer_details,
+            $place,
+            $mobile_number,
+            $original_amount,
+            $interest_rate,
+            $products_json,
+            $interest_income,
+            $refund_amount,
+            $other_amount,
+            $pawnjewelry_recovery_date,
+            $interest_payment_periods,
+            $bank_pledge_date,
+            $bank_assessor_name,
+            $bank_name,
+            $bank_pawn_value,
+            $bank_interest,
+            $bank_duration,
+            $bank_additional_charges,
+            $location,
+            $bank_paid_interest_amount,
+            $bank_recovery_pawn_amount,
+            $edit_id
         );
 
         if ($updateStmt->execute()) {
@@ -211,8 +230,6 @@ elseif (isset($obj->receipt_no)) {
         }
         $updateStmt->close();
     }
-
-   
 }
 
 

@@ -20,23 +20,20 @@ $timestamp = date('Y-m-d H:i:s');
 // <<<<<<<<<<===================== List Recovery Records =====================>>>>>>>>>>
 if (isset($obj->search_text)) {
     $search_text = $conn->real_escape_string($obj->search_text);
-    $sql = "SELECT r.id AS id,p.customer_no AS customer_no, r.pawnjewelry_recovery_id AS pawnjewelry_recovery_id, r.receipt_no AS receipt_no, r.pawnjewelry_date AS pawnjewelry_date, r.name AS name, r.customer_details AS customer_details, r.place AS place, r.mobile_number AS mobile_number, r.original_amount AS original_amount, r.interest_rate AS interest_rate, r.jewel_product AS jewel_product, r.interest_income AS interest_income, r.refund_amount AS refund_amount, r.other_amount AS other_amount, r.pawnjewelry_recovery_date AS pawnjewelry_recovery_date, r.status AS status, r.interest_payment_periods AS interest_payment_periods, r.proof_base64code AS proof_base64code,r.interest_paid AS interest_paid FROM  pawnjewelry_recovery AS r
-LEFT JOIN 
-    pawnjewelry AS p ON p.receipt_no = r.receipt_no
-
+    $sql = "SELECT `id`, `pawnjewelry_recovery_id`, `receipt_no`, `pawnjewelry_date`, `name`, `customer_details`, `place`, `mobile_number`, `original_amount`, `interest_rate`, `jewel_product`, `interest_income`, `refund_amount`, `other_amount`, `interest_paid`, `pawnjewelry_recovery_date`, `status`, `interest_payment_periods`, `proof_base64code`, `delete_at`, `create_at` FROM `pawnjewelry_recovery`
 WHERE 
-    r.delete_at = 0
-    AND (r.receipt_no LIKE '%$search_text%' OR p.customer_details LIKE '%$search_text%')
+    `delete_at` = 0
+    AND (`receipt_no` LIKE '%$search_text%' OR `customer_details` LIKE '%$search_text%')
 
 ORDER BY 
-    r.id ASC
+    `id` ASC
 ";
 
     $result = $conn->query($sql);
     if ($result->num_rows > 0) {
+        $output["head"]["code"] = 200;
+        $output["head"]["msg"] = "Success";
         while ($row = $result->fetch_assoc()) {
-            $output["head"]["code"] = 200;
-            $output["head"]["msg"] = "Success";
             $output["body"]["pawnrecovery"][] = $row;
         }
     } else {
@@ -74,18 +71,6 @@ elseif (isset($obj->receipt_no)) {
     $interest_payment_periods = $conn->real_escape_string($obj->interest_payment_periods);
     $interest_paid = floatval($obj->interest_paid);
 
-    // Bank fields
-    $bank_pledge_date = $conn->real_escape_string($obj->bank_pledge_date ?? '');
-    $bank_assessor_name = $conn->real_escape_string($obj->bank_assessor_name ?? '');
-    $bank_name = $conn->real_escape_string($obj->bank_name ?? '');
-    $bank_pawn_value = floatval($obj->bank_pawn_value ?? 0);
-    $bank_interest = floatval($obj->bank_interest ?? 0);
-    $bank_duration = $conn->real_escape_string($obj->bank_duration ?? '');
-    $bank_additional_charges = floatval($obj->bank_additional_charges ?? 0);
-    $location = $conn->real_escape_string($obj->location ?? '');
-    $bank_paid_interest_amount = floatval($obj->bank_paid_interest_amount ?? 0);
-    $bank_recovery_pawn_amount = floatval($obj->bank_recovery_pawn_amount ?? 0);
-
     $type = "varavu";
     $timestamp = date('Y-m-d H:i:s');
 
@@ -115,25 +100,17 @@ elseif (isset($obj->receipt_no)) {
         $checkStmt->close();
 
         if ($recoveryCheck->num_rows == 0) {
-            // Convert empty dates to NULL
-            $bank_pledge_date_sql = ($bank_pledge_date === '') ? 'NULL' : "'$bank_pledge_date'";
-            $bank_duration_sql = ($bank_duration === '') ? 'NULL' : "'$bank_duration'";
-
             $sql = "
                 INSERT INTO `pawnjewelry_recovery` (
                     `pawnjewelry_date`, `receipt_no`, `name`, `customer_details`, `place`, `mobile_number`, 
                     `original_amount`, `interest_rate`, `jewel_product`, `interest_income`, `refund_amount`, 
                     `pawnjewelry_recovery_date`, `interest_payment_periods`, `create_at`, `delete_at`, 
-                    `other_amount`, `interest_paid`, `bank_pledge_date`, `bank_assessor_name`, `bank_name`, 
-                    `bank_pawn_value`, `bank_interest`, `bank_duration`, `bank_additional_charges`, `location`, 
-                    `bank_paid_interest_amount`, `bank_recovery_pawn_amount`
+                    `other_amount`, `interest_paid`, `status`, `proof_base64code`
                 ) VALUES (
                     '$pawnjewelry_date', '$receipt_no', '$name', '$customer_details', '$place', '$mobile_number',
                     $original_amount, $interest_rate, '$products_json', $interest_income, $refund_amount,
                     '$pawnjewelry_recovery_date', '$interest_payment_periods', '$timestamp', 0,
-                    $other_amount, $interest_paid, $bank_pledge_date_sql, '$bank_assessor_name', '$bank_name',
-                    $bank_pawn_value, $bank_interest, $bank_duration_sql, $bank_additional_charges, '$location',
-                    $bank_paid_interest_amount, $bank_recovery_pawn_amount
+                    $other_amount, $interest_paid, 'நகை மீட்கபட்டது', ''
                 )
             ";
 
@@ -161,9 +138,6 @@ elseif (isset($obj->receipt_no)) {
                 // Transactions
                 addTransaction($conn, $name, $refund_amount, $type, $pawnjewelry_recovery_date);
                 if ($other_amount > 0) addTransaction($conn, $name, $other_amount, $type, $pawnjewelry_recovery_date);
-                if ($bank_recovery_pawn_amount > 0) addTransaction($conn, $name, $bank_recovery_pawn_amount, $type, $pawnjewelry_recovery_date);
-                if ($bank_paid_interest_amount > 0) addTransaction($conn, $name, $bank_paid_interest_amount, $type, $pawnjewelry_recovery_date);
-                if ($bank_additional_charges > 0) addTransaction($conn, $name, $bank_additional_charges, $type, $pawnjewelry_recovery_date);
 
                 $output["head"]["code"] = 200;
                 $output["head"]["msg"] = "Recovery record added successfully and pawn status updated";
@@ -185,13 +159,10 @@ elseif (isset($obj->receipt_no)) {
             `pawnjewelry_date` = ?, `receipt_no` = ?, `name` = ?, `customer_details` = ?, `place` = ?, 
             `mobile_number` = ?, `original_amount` = ?, `interest_rate` = ?, `jewel_product` = ?, 
             `interest_income` = ?, `refund_amount` = ?, `other_amount` = ?, `pawnjewelry_recovery_date` = ?, 
-            `interest_payment_periods` = ?, `bank_pledge_date` = ?, `bank_assessor_name` = ?, 
-            `bank_name` = ?, `bank_pawn_value` = ?, `bank_interest` = ?, `bank_duration` = ?, 
-            `bank_additional_charges` = ?, `location` = ?, `bank_paid_interest_amount` = ?, 
-            `bank_recovery_pawn_amount` = ?
+            `interest_payment_periods` = ?, `interest_paid` = ?
             WHERE `pawnjewelry_recovery_id` = ?");
         $updateStmt->bind_param(
-            "ssssssdssdddsssssddddsdds",
+            "ssssssdssdddssds",
             $pawnjewelry_date,
             $receipt_no,
             $name,
@@ -206,16 +177,7 @@ elseif (isset($obj->receipt_no)) {
             $other_amount,
             $pawnjewelry_recovery_date,
             $interest_payment_periods,
-            $bank_pledge_date,
-            $bank_assessor_name,
-            $bank_name,
-            $bank_pawn_value,
-            $bank_interest,
-            $bank_duration,
-            $bank_additional_charges,
-            $location,
-            $bank_paid_interest_amount,
-            $bank_recovery_pawn_amount,
+            $interest_paid,
             $edit_id
         );
 
@@ -231,20 +193,44 @@ elseif (isset($obj->receipt_no)) {
     }
 }
 
-
 // <<<<<<<<<<===================== Delete Recovery Record =====================>>>>>>>>>>  
 else if (isset($obj->delete_pawn_recovery_id)) {
     $delete_pawn_recovery_id = $obj->delete_pawn_recovery_id;
 
     if (!empty($delete_pawn_recovery_id)) {
-        $deleteRecovery = "UPDATE `pawnjewelry_recovery` SET `delete_at` = 1 WHERE `pawnjewelry_recovery_id` = '$delete_pawn_recovery_id'";
-        if ($conn->query($deleteRecovery)) {
-            $output["head"]["code"] = 200;
-            $output["head"]["msg"] = "Recovery record deleted successfully";
+        // Get the receipt_no from the recovery record
+        $getReceiptStmt = $conn->prepare("SELECT `receipt_no` FROM `pawnjewelry_recovery` WHERE `pawnjewelry_recovery_id` = ? AND `delete_at` = 0");
+        $getReceiptStmt->bind_param("s", $delete_pawn_recovery_id);
+        $getReceiptStmt->execute();
+        $result = $getReceiptStmt->get_result();
+        if ($result->num_rows > 0) {
+            $row = $result->fetch_assoc();
+            $receipt_no = $row['receipt_no'];
+
+            // Soft delete the recovery
+            $deleteRecovery = "UPDATE `pawnjewelry_recovery` SET `delete_at` = 1 WHERE `pawnjewelry_recovery_id` = '$delete_pawn_recovery_id'";
+            if ($conn->query($deleteRecovery)) {
+                // Update pawnjewelry status back to 'நகை மீட்கபடவில்லை'
+                $statusUpdateStmt = $conn->prepare("UPDATE `pawnjewelry` SET `status` = 'நகை மீட்கபடவில்லை' WHERE `receipt_no` = ? AND `delete_at` = 0");
+                $statusUpdateStmt->bind_param("s", $receipt_no);
+                if ($statusUpdateStmt->execute()) {
+                    $output["head"]["code"] = 200;
+                    $output["head"]["msg"] = "Recovery record deleted successfully and pawn status updated";
+                } else {
+                    error_log("Failed to update pawn status after deletion: " . $statusUpdateStmt->error);
+                    $output["head"]["code"] = 400;
+                    $output["head"]["msg"] = "Recovery deleted, but failed to update pawn status.";
+                }
+                $statusUpdateStmt->close();
+            } else {
+                $output["head"]["code"] = 400;
+                $output["head"]["msg"] = "Failed to delete recovery record. Please try again.";
+            }
         } else {
             $output["head"]["code"] = 400;
-            $output["head"]["msg"] = "Failed to delete. Please try again.";
+            $output["head"]["msg"] = "Recovery record not found.";
         }
+        $getReceiptStmt->close();
     }
 } else {
     $output["head"]["code"] = 400;

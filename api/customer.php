@@ -19,6 +19,17 @@ $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https:
 $domain = $_SERVER['HTTP_HOST'];
 $base_url = $protocol . $domain;
 
+function logCustomerHistory($conn, $customer_id, $customer_no, $action_type, $old_value, $new_value, $remarks, $by_id, $by_name)
+{
+    $log_timestamp = date('Y-m-d H:i:s');
+    $old_value = $old_value ?? '{}';
+    $new_value = $new_value ?? '{}';
+    $sql = "INSERT INTO `customer_history` (`customer_id`, `customer_no`, `action_type`, `old_value`, `new_value`, `remarks`, `create_by_name`, `create_by_id`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("sssssssss", $customer_id, $customer_no, $action_type, $old_value, $new_value, $remarks, $by_name, $by_id, $log_timestamp);
+    return $stmt->execute();
+}
+
 // <<<<<<<<<<===================== List Customers =====================>>>>>>>>>>
 if (isset($obj['search_text'])) {
     if (!$conn || !($conn instanceof mysqli)) {
@@ -47,27 +58,27 @@ if (isset($obj['search_text'])) {
         while ($row = $result->fetch_assoc()) {
             $row['proof'] = json_decode($row['proof'], true) ?? [];
             $row['proof_base64code'] =  [];
-           // json_decode($row['proof_base64code'], true) ??
+            // json_decode($row['proof_base64code'], true) ??
             $row['aadharproof'] = json_decode($row['aadharproof'], true) ?? ["welcome"];
             $row['aadharproof_base64code'] = [];
             //json_decode($row['aadharproof_base64code'], true) ??
             $row['customer_no'] = (string)$row['customer_no'];
-             $full_proof_urls = [];
-foreach ($row['proof'] as $proof_path) {
-    // Normalize and remove leading "../"
-    $cleaned_path = ltrim($proof_path, '../');
-    $full_url = $base_url . '/' . $cleaned_path;
-    $full_proof_urls[] = $full_url;
-}
-$row['proof'] = $full_proof_urls;
-$full_proof_urls1 = [];
-foreach ($row['aadharproof'] as $proof_path) {
-    // Normalize and remove leading "../"
-    $cleaned_path = ltrim($proof_path, '../');
-    $full_url = $base_url . '/' . $cleaned_path;
-    $full_proof_urls1[] = $full_url;
-}
-$row['aadharproof'] = $full_proof_urls1;
+            $full_proof_urls = [];
+            foreach ($row['proof'] as $proof_path) {
+                // Normalize and remove leading "../"
+                $cleaned_path = ltrim($proof_path, '../');
+                $full_url = $base_url . '/' . $cleaned_path;
+                $full_proof_urls[] = $full_url;
+            }
+            $row['proof'] = $full_proof_urls;
+            $full_proof_urls1 = [];
+            foreach ($row['aadharproof'] as $proof_path) {
+                // Normalize and remove leading "../"
+                $cleaned_path = ltrim($proof_path, '../');
+                $full_url = $base_url . '/' . $cleaned_path;
+                $full_proof_urls1[] = $full_url;
+            }
+            $row['aadharproof'] = $full_proof_urls1;
             $output["body"]["customer"][] = $row;
         }
     } else {
@@ -87,6 +98,13 @@ elseif (isset($obj['edit_customer_id'])) {
         echo json_encode($output, JSON_NUMERIC_CHECK);
         exit;
     }
+    if (!isset($obj['login_id']) || empty(trim($obj['login_id']))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+    $login_id = $conn->real_escape_string(trim($obj['login_id']));
     $edit_id = $conn->real_escape_string(trim($obj['edit_customer_id']));
     $name = $conn->real_escape_string(trim($obj['name'] ?? ''));
     $mobile_number = $conn->real_escape_string(trim($obj['mobile_number'] ?? ''));
@@ -100,13 +118,37 @@ elseif (isset($obj['edit_customer_id'])) {
     $dateofbirth = isset($obj['dateofbirth']) ? $obj['dateofbirth'] : null;
     $proof_number = isset($obj['proof_number']) ? $obj['proof_number'] : "";
     $upload_type = isset($obj['upload_type']) ? $obj['upload_type'] : "";
-    $addtionsonal_mobile_number = $conn->real_escape_string(trim($obj['additional_number']));
+    $addtionsonal_mobile_number = $conn->real_escape_string(trim($obj['additional_number'] ?? ''));
     $reference = $conn->real_escape_string(trim($obj['reference'] ?? ''));
     $account_holder_name = $conn->real_escape_string(trim($obj['account_holder_name'] ?? ''));
     $bank_name = $conn->real_escape_string(trim($obj['bank_name'] ?? ''));
     $account_number = $conn->real_escape_string(trim($obj['account_number'] ?? ''));
     $ifsc_code = $conn->real_escape_string(trim($obj['ifsc_code'] ?? ''));
     $branch_name = $conn->real_escape_string(trim($obj['branch_name'] ?? ''));
+
+    // Fetch old row for history
+    $old_json = null;
+    $sql_old = "SELECT * FROM `customer` WHERE `customer_id` = ? AND `delete_at` = 0";
+    $stmt_old = $conn->prepare($sql_old);
+    $stmt_old->bind_param("s", $edit_id);
+    $stmt_old->execute();
+    $old_result = $stmt_old->get_result();
+    if ($old_row = $old_result->fetch_assoc()) {
+        $old_json = json_encode($old_row);
+    }
+    $stmt_old->close();
+
+    // Fetch user name for history
+    $by_name = '';
+    $sql_user = "SELECT `user_name` FROM `users` WHERE `id` = ?";
+    $stmt_user = $conn->prepare($sql_user);
+    $stmt_user->bind_param("s", $login_id);
+    $stmt_user->execute();
+    $user_result = $stmt_user->get_result();
+    if ($user_row = $user_result->fetch_assoc()) {
+        $by_name = $user_row['user_name'];
+    }
+    $stmt_user->close();
 
     $proofPaths = [];
     $proofBase64Codes = [];
@@ -257,12 +299,28 @@ elseif (isset($obj['edit_customer_id'])) {
         $output["head"]["msg"] = "Name, mobile number, and customer number are required";
     } else {
         $sql = "UPDATE `customer` 
-                SET `name`=?, `mobile_number`=?, `customer_no`=?, `customer_details`=?, `place`=?, `proof`=?, `proof_base64code`=?, `aadharproof`=?, `aadharproof_base64code`=?,`dateofbirth`=?,`proof_number`=?,`upload_type`=?,`pincode`=?, `addtionsonal_mobile_number`=?,`reference`=?, `account_holder_name`=?, `bank_name`=?, `account_number`=?, `ifsc_code`=?, `branch_name`=?
+                SET `name`=?, `mobile_number`=?, `customer_no`=?, `customer_details`=?, `place`=?, `proof`=?, `proof_base64code`=?, `aadharproof`=?, `aadharproof_base64code`=?,`dateofbirth`=?,`proof_number`=?,`upload_type`=?,`pincode`=?, `addtionsonal_mobile_number`=?,`reference`=?, `account_holder_name`=?, `bank_name`=?, `account_number`=?, `ifsc_code`=?, `branch_name`=?, `updated_by_id`=?
                 WHERE `customer_id`=? AND `delete_at`=0";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssssssssssssssssssss", $name, $mobile_number, $customer_no, $customer_details, $place, $proofJson, $proofBase64CodeJson, $aadharProofJson, $aadharProofBase64CodeJson,$dateofbirth,$proof_number,$upload_type,$pincode,$addtionsonal_mobile_number,$reference, $account_holder_name, $bank_name, $account_number, $ifsc_code, $branch_name, $edit_id);
+        $stmt->bind_param("ssssssssssssssssssssss", $name, $mobile_number, $customer_no, $customer_details, $place, $proofJson, $proofBase64CodeJson, $aadharProofJson, $aadharProofBase64CodeJson, $dateofbirth, $proof_number, $upload_type, $pincode, $addtionsonal_mobile_number, $reference, $account_holder_name, $bank_name, $account_number, $ifsc_code, $branch_name, $login_id, $edit_id);
 
         if ($stmt->execute()) {
+            // Fetch new row after update
+            $new_json = null;
+            $sql_new = "SELECT * FROM `customer` WHERE `customer_id` = ? AND `delete_at` = 0";
+            $stmt_new = $conn->prepare($sql_new);
+            $stmt_new->bind_param("s", $edit_id);
+            $stmt_new->execute();
+            $new_result = $stmt_new->get_result();
+            if ($new_row = $new_result->fetch_assoc()) {
+                $new_json = json_encode($new_row);
+            }
+            $stmt_new->close();
+
+            // Log to history
+            $remarks = "Customer updated";
+            logCustomerHistory($conn, $edit_id, $customer_no, "update", $old_json, $new_json, $remarks, $login_id, $by_name);
+
             $output["head"]["code"] = 200;
             $output["head"]["msg"] = "Customer updated successfully";
         } else {
@@ -279,9 +337,16 @@ elseif (isset($obj['edit_customer_id'])) {
         echo json_encode($output, JSON_NUMERIC_CHECK);
         exit;
     }
+    if (!isset($obj['login_id']) || empty(trim($obj['login_id']))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+    $login_id = $conn->real_escape_string(trim($obj['login_id']));
     $name = $conn->real_escape_string(trim($obj['name']));
     $mobile_number = $conn->real_escape_string(trim($obj['mobile_number']));
-    $addtionsonal_mobile_number = $conn->real_escape_string(trim($obj['additional_number']));
+    $addtionsonal_mobile_number = $conn->real_escape_string(trim($obj['additional_number'] ?? ''));
     $customer_no = $conn->real_escape_string(trim($obj['customer_no']));
     $customer_details = $conn->real_escape_string(trim($obj['customer_details'] ?? ''));
     $place = $conn->real_escape_string(trim($obj['place'] ?? ''));
@@ -297,7 +362,19 @@ elseif (isset($obj['edit_customer_id'])) {
     $account_number = $conn->real_escape_string(trim($obj['account_number'] ?? ''));
     $ifsc_code = $conn->real_escape_string(trim($obj['ifsc_code'] ?? ''));
     $branch_name = $conn->real_escape_string(trim($obj['branch_name'] ?? ''));
-    
+
+
+    // Fetch user name for history
+    $by_name = '';
+    $sql_user = "SELECT `user_name` FROM `users` WHERE `id` = ?";
+    $stmt_user = $conn->prepare($sql_user);
+    $stmt_user->bind_param("s", $login_id);
+    $stmt_user->execute();
+    $user_result = $stmt_user->get_result();
+    if ($user_row = $user_result->fetch_assoc()) {
+        $by_name = $user_row['user_name'];
+    }
+    $stmt_user->close();
 
     $proofPaths = [];
     $proofBase64Codes = [];
@@ -463,10 +540,11 @@ elseif (isset($obj['edit_customer_id'])) {
             $result = $stmt->get_result();
 
             if ($result->num_rows == 0) {
-                $sql = "INSERT INTO `customer` (`name`, `mobile_number`, `customer_no`, `customer_details`, `place`, `proof`, `proof_base64code`, `aadharproof`, `aadharproof_base64code`,`dateofbirth`,`proof_number`,`upload_type`, `create_at`, `delete_at`,`pincode`,`addtionsonal_mobile_number`,`reference`, `account_holder_name`, `bank_name`, `account_number`, `ifsc_code`, `branch_name`) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $delete_at = '0';
+                $sql = "INSERT INTO `customer` (`name`, `mobile_number`, `customer_no`, `customer_details`, `place`, `proof`, `proof_base64code`, `aadharproof`, `aadharproof_base64code`,`dateofbirth`,`proof_number`,`upload_type`, `create_at`, `delete_at`,`pincode`,`addtionsonal_mobile_number`,`reference`, `account_holder_name`, `bank_name`, `account_number`, `ifsc_code`, `branch_name`, `created_by_id`) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $conn->prepare($sql);
-                $stmt->bind_param("sssssssssssssssssssss", $name, $mobile_number, $customer_no, $customer_details, $place, $proofJson, $proofBase64CodeJson, $aadharProofJson, $aadharProofBase64CodeJson,$dateofbirth,$proof_number,$upload_type, $timestamp,$pincode,$addtionsonal_mobile_number,$reference, $account_holder_name, $bank_name, $account_number, $ifsc_code, $branch_name);
+                $stmt->bind_param("sssssssssssssssssssssss", $name, $mobile_number, $customer_no, $customer_details, $place, $proofJson, $proofBase64CodeJson, $aadharProofJson, $aadharProofBase64CodeJson, $dateofbirth, $proof_number, $upload_type, $timestamp, $delete_at, $pincode, $addtionsonal_mobile_number, $reference, $account_holder_name, $bank_name, $account_number, $ifsc_code, $branch_name, $login_id);
 
                 if ($stmt->execute()) {
                     $id = $conn->insert_id;
@@ -476,6 +554,22 @@ elseif (isset($obj['edit_customer_id'])) {
                     $stmt = $conn->prepare($sql);
                     $stmt->bind_param("si", $uniqueCustomerID, $id);
                     $stmt->execute();
+
+                    // Fetch the new row after insert and set customer_id
+                    $new_json = null;
+                    $sql_new = "SELECT * FROM `customer` WHERE `customer_id` = ? AND `delete_at` = 0";
+                    $stmt_new = $conn->prepare($sql_new);
+                    $stmt_new->bind_param("s", $uniqueCustomerID);
+                    $stmt_new->execute();
+                    $new_result = $stmt_new->get_result();
+                    if ($new_row = $new_result->fetch_assoc()) {
+                        $new_json = json_encode($new_row);
+                    }
+                    $stmt_new->close();
+
+                    // Log to history
+                    $remarks = "Customer created";
+                    logCustomerHistory($conn, $uniqueCustomerID, $customer_no, "create", null, $new_json, $remarks, $login_id, $by_name);
 
                     $output["head"]["code"] = 200;
                     $output["head"]["msg"] = "Customer created successfully";
@@ -503,14 +597,51 @@ elseif (isset($obj['delete_customer_id'])) {
         echo json_encode($output, JSON_NUMERIC_CHECK);
         exit;
     }
+    if (!isset($obj['login_id']) || empty(trim($obj['login_id']))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+    $login_id = $conn->real_escape_string(trim($obj['login_id']));
     $delete_customer_id = $conn->real_escape_string(trim($obj['delete_customer_id']));
 
+    // Fetch old row for history
+    $old_json = null;
+    $customer_no = '';
+    $sql_old = "SELECT * FROM `customer` WHERE `customer_id` = ? AND `delete_at` = 0";
+    $stmt_old = $conn->prepare($sql_old);
+    $stmt_old->bind_param("s", $delete_customer_id);
+    $stmt_old->execute();
+    $old_result = $stmt_old->get_result();
+    if ($old_row = $old_result->fetch_assoc()) {
+        $old_json = json_encode($old_row);
+        $customer_no = $old_row['customer_no'];
+    }
+    $stmt_old->close();
+
+    // Fetch user name for history
+    $by_name = '';
+    $sql_user = "SELECT `user_name` FROM `users` WHERE `id` = ?";
+    $stmt_user = $conn->prepare($sql_user);
+    $stmt_user->bind_param("s", $login_id);
+    $stmt_user->execute();
+    $user_result = $stmt_user->get_result();
+    if ($user_row = $user_result->fetch_assoc()) {
+        $by_name = $user_row['user_name'];
+    }
+    $stmt_user->close();
+
     if (!empty($delete_customer_id)) {
-        $sql = "UPDATE `customer` SET `delete_at`=1 WHERE `customer_id`=? AND `delete_at`=0";
+        $sql = "UPDATE `customer` SET `delete_at`=1, `deleted_by_id`=? WHERE `customer_id`=? AND `delete_at`=0";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("s", $delete_customer_id);
+        $stmt->bind_param("ss", $login_id, $delete_customer_id);
 
         if ($stmt->execute() && $stmt->affected_rows > 0) {
+            // Log to history
+            $remarks = "Customer deleted";
+            logCustomerHistory($conn, $delete_customer_id, $customer_no, "delete", $old_json, null, $remarks, $login_id, $by_name);
+
             $output["head"]["code"] = 200;
             $output["head"]["msg"] = "Customer deleted successfully";
         } else {
@@ -529,4 +660,3 @@ elseif (isset($obj['delete_customer_id'])) {
 
 echo json_encode($output);
 $conn->close();
-?>

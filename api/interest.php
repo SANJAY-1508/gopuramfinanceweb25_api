@@ -44,7 +44,7 @@ if (isset($obj->search_text)) {
             $interest_income = floatval($row['interest_income']);
 
             // Parse interest rate (e.g., "2%" -> 0.02)
-           $interest_rate_value = $interest_rate / 100;
+            $interest_rate_value = $interest_rate / 100;
 
             // Calculate daily interest
             $monthly_interest = $original_amount * $interest_rate_value;
@@ -56,7 +56,7 @@ if (isset($obj->search_text)) {
 
             // Format interest_payment_periods
             $months = $days_paid;
-           // $days = $days_paid % 30;
+            // $days = $days_paid % 30;
             $period_string = '';
             if ($months > 0) {
                 $period_string .= "$months month" . ($months > 1 ? 's' : '');
@@ -134,7 +134,7 @@ elseif (isset($obj->receipt_no) && empty($obj->edit_interest_id)) {
     }
 
     // Fetch pawnjewelry record
-   $stmt = $conn->prepare("SELECT  pawnjewelry_id, pawnjewelry_date, customer_no, 
+    $stmt = $conn->prepare("SELECT  pawnjewelry_id, pawnjewelry_date, customer_no, 
                                    original_amount, interest_rate, interest_payment_period, interest_payment_amount 
                             FROM pawnjewelry 
                             WHERE receipt_no = ? AND delete_at = 0");
@@ -178,11 +178,26 @@ elseif (isset($obj->receipt_no) && empty($obj->edit_interest_id)) {
         `outstanding_amount`, `topup_amount`, `deduction_amount`, `create_at`, `delete_at`
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)");
 
-    $stmt->bind_param("issssssssdsssssiss",
-        $pawnjewelry_id, $pawnjewelry_date, $customer_no,
-        $interest_receive_date, $receipt_no, $name, $customer_details, $place, $mobile_number,
-        $original_amount, $pawn_interest_rate, $products_json, $interest_income,
-        $outstanding_period, $outstanding_amount, $topup_amount, $deduction_amount, $timestamp
+    $stmt->bind_param(
+        "issssssssdsssssiss",
+        $pawnjewelry_id,
+        $pawnjewelry_date,
+        $customer_no,
+        $interest_receive_date,
+        $receipt_no,
+        $name,
+        $customer_details,
+        $place,
+        $mobile_number,
+        $original_amount,
+        $pawn_interest_rate,
+        $products_json,
+        $interest_income,
+        $outstanding_period,
+        $outstanding_amount,
+        $topup_amount,
+        $deduction_amount,
+        $timestamp
     );
 
     if ($stmt->execute()) {
@@ -223,14 +238,14 @@ elseif (isset($obj->receipt_no) && empty($obj->edit_interest_id)) {
         }
 
 
-        
+
         // Update pawnjewelry with new period and amount
         $stmt = $conn->prepare("UPDATE pawnjewelry SET 
             interest_payment_period = ?, 
             interest_payment_amount = ?,
             last_interest_settlement_date = ?  
             WHERE receipt_no = ? AND delete_at = 0");
-        $stmt->bind_param("idss", $new_interest_payment_period, $new_interest_payment_amount, $interest_receive_date, $receipt_no);  
+        $stmt->bind_param("idss", $new_interest_payment_period, $new_interest_payment_amount, $interest_receive_date, $receipt_no);
         $stmt->execute();
         $stmt->close();
 
@@ -251,7 +266,7 @@ elseif (isset($obj->receipt_no) && empty($obj->edit_interest_id)) {
         $output["head"]["msg"] = "Failed to add. Please try again.";
     }
 
-   // echo json_encode($output);
+    // echo json_encode($output);
 }
 // <<<<<<<<<<===================== Update Interest Record =====================>>>>>>>>>>
 elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
@@ -321,10 +336,21 @@ elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
         `topup_amount`=?, 
         `deduction_amount`=?
         WHERE `interest_id`=?");
-    $stmt->bind_param("sssssdsssdiss", 
-        $receipt_no, $name, $customer_details, $place, $mobile_number,
-        $original_amount, $interest_rate, $products_json, $interest_income,
-        $interest_receive_date, $topup_amount, $deduction_amount, $edit_id
+    $stmt->bind_param(
+        "sssssdsssdiss",
+        $receipt_no,
+        $name,
+        $customer_details,
+        $place,
+        $mobile_number,
+        $original_amount,
+        $interest_rate,
+        $products_json,
+        $interest_income,
+        $interest_receive_date,
+        $topup_amount,
+        $deduction_amount,
+        $edit_id
     );
 
     if ($stmt->execute()) {
@@ -364,20 +390,20 @@ elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
                 interest_payment_amount = ?,
                 last_interest_settlement_date = ? 
                 WHERE receipt_no = ? AND delete_at = 0");
-            $updatePawn->bind_param("idss", $new_interest_payment_period, $new_interest_payment_amount, $interest_receive_date, $receipt_no);  
+            $updatePawn->bind_param("idss", $new_interest_payment_period, $new_interest_payment_amount, $interest_receive_date, $receipt_no);
             if (!$updatePawn->execute()) {
                 error_log("Pawnjewelry update failed after interest edit: " . $updatePawn->error);
             }
             $updatePawn->close();
-        $output["head"]["code"] = 200;
-        $output["head"]["msg"] = "Interest record updated successfully (strictly month-wise).";
-    } else {
-        error_log("Interest update failed: " . $stmt->error);
-        $output["head"]["code"] = 400;
-        $output["head"]["msg"] = "Failed to update. Please try again.";
+            $output["head"]["code"] = 200;
+            $output["head"]["msg"] = "Interest record updated successfully (strictly month-wise).";
+        } else {
+            error_log("Interest update failed: " . $stmt->error);
+            $output["head"]["code"] = 400;
+            $output["head"]["msg"] = "Failed to update. Please try again.";
+        }
+        $stmt->close();
     }
-    $stmt->close();
-}
 }
 
 // <<<<<<<<<<===================== Delete Interest Record =====================>>>>>>>>>>  
@@ -439,9 +465,9 @@ else if (isset($obj->delete_interest_id)) {
                     interest_payment_amount = ?,
                     last_interest_settlement_date = NULL
                     WHERE receipt_no = ? AND delete_at = 0");
-                $updatePawn->bind_param("ids", $new_interest_payment_period, $new_interest_payment_amount, $receipt_no);
-                $updatePawn->execute();
-                $updatePawn->close();
+                    $updatePawn->bind_param("ids", $new_interest_payment_period, $new_interest_payment_amount, $receipt_no);
+                    $updatePawn->execute();
+                    $updatePawn->close();
                 } else {
                     $output["head"]["code"] = 400;
                     $output["head"]["msg"] = "Invalid period or amount adjustment after deletion.";
@@ -462,11 +488,9 @@ else if (isset($obj->delete_interest_id)) {
         $output["head"]["code"] = 400;
         $output["head"]["msg"] = "Please provide all required details.";
     }
-}
-else {
+} else {
     $output["head"]["code"] = 400;
     $output["head"]["msg"] = "Parameter mismatch";
 }
 
 echo json_encode($output, JSON_NUMERIC_CHECK);
-?>

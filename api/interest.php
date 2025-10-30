@@ -334,10 +334,10 @@ elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
         `interest_income`=?, 
         `interest_receive_date`=?, 
         `topup_amount`=?, 
-        `deduction_amount`=?
+        `deduction_amount`=? 
         WHERE `interest_id`=?");
     $stmt->bind_param(
-        "sssssdsssdiss",
+        "sssssdssdsiis",
         $receipt_no,
         $name,
         $customer_details,

@@ -29,8 +29,7 @@ WHERE
     AND (r.receipt_no LIKE '%$search_text%' OR p.customer_details LIKE '%$search_text%')
 
 ORDER BY 
-    r.id ASC;
-;
+    r.id ASC
 ";
 
     $result = $conn->query($sql);
@@ -38,12 +37,12 @@ ORDER BY
         while ($row = $result->fetch_assoc()) {
             $output["head"]["code"] = 200;
             $output["head"]["msg"] = "Success";
-            $output["body"]["pawn_recovery"][] = $row;
+            $output["body"]["pawnrecovery"][] = $row;
         }
     } else {
         $output["head"]["code"] = 200;
         $output["head"]["msg"] = "No records found";
-        $output["body"]["pawn_recovery"] = [];
+        $output["body"]["pawnrecovery"] = [];
     }
 }
 
@@ -68,7 +67,7 @@ elseif (isset($obj->receipt_no)) {
     $interest_rate = floatval($obj->interest_rate ?? 0);
     $jewel_product = isset($obj->jewel_product) ? $obj->jewel_product : [];
     $products_json = $conn->real_escape_string(json_encode($jewel_product, JSON_UNESCAPED_UNICODE));
-    $interest_income = floatval($obj->interest_income);
+    $interest_income = floatval($obj->interest_income ?? 0);
     $refund_amount = floatval($obj->refund_amount);
     $other_amount = floatval($obj->other_amount);
     $pawnjewelry_recovery_date = $conn->real_escape_string($obj->pawnjewelry_recovery_date);
@@ -192,7 +191,7 @@ elseif (isset($obj->receipt_no)) {
             `bank_recovery_pawn_amount` = ?
             WHERE `pawnjewelry_recovery_id` = ?");
         $updateStmt->bind_param(
-            "ssssssdssdsssssssssddss",
+            "ssssssdssdddsssssddddsdds",
             $pawnjewelry_date,
             $receipt_no,
             $name,

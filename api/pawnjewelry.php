@@ -18,7 +18,8 @@ $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https:
 $domain = $_SERVER['HTTP_HOST'];
 $base_url = $protocol . $domain;
 
-function calculateInterestPeriod_14HalfDays($startDate, $endDate = null) {
+function calculateInterestPeriod_14HalfDays($startDate, $endDate = null)
+{
     $start = new DateTime($startDate);
     $end = $endDate ? new DateTime($endDate) : new DateTime();
     $diff_days = $start->diff($end)->days;
@@ -26,7 +27,8 @@ function calculateInterestPeriod_14HalfDays($startDate, $endDate = null) {
     return $half_count * 0.5;
 }
 
-function getDynamicRateByFullMonth($monthIndex, $pawn_interest, $recoveryPeriod) {
+function getDynamicRateByFullMonth($monthIndex, $pawn_interest, $recoveryPeriod)
+{
     if ($monthIndex <= $recoveryPeriod) {
         return $pawn_interest;
     }
@@ -43,7 +45,8 @@ function getDynamicRateByFullMonth($monthIndex, $pawn_interest, $recoveryPeriod)
     }
 }
 
-function calculateTotalInterestDue($startDate, $principal, $recoveryPeriod, $paidTotalMonths, $pawn_interest, $endDate = null) {
+function calculateTotalInterestDue($startDate, $principal, $recoveryPeriod, $paidTotalMonths, $pawn_interest, $endDate = null)
+{
     $monthsFloat = calculateInterestPeriod_14HalfDays($startDate, $endDate);
     $totalInterest = 0.0;
 
@@ -447,10 +450,25 @@ else if (isset($obj->receipt_no) && !isset($obj->edit_pawnjewelry_id)) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->bind_param(
             "sssssssdsssssssssss",
-            $pawnjewelry_date, $customer_no, $receipt_no, $name, $customer_details, $place, $mobile_number,
-            $original_amount, $products_json, $Jewelry_recovery_agreed_period, $interest_rate_str, 
-            $proofJson, $proofBase64CodeJson, $aadharProofJson, $aadharProofBase64CodeJson,
-            $timestamp, $proof_number, $upload_type, $pawnjewelry_date  // last_settlement = creation
+            $pawnjewelry_date,
+            $customer_no,
+            $receipt_no,
+            $name,
+            $customer_details,
+            $place,
+            $mobile_number,
+            $original_amount,
+            $products_json,
+            $Jewelry_recovery_agreed_period,
+            $interest_rate_str,
+            $proofJson,
+            $proofBase64CodeJson,
+            $aadharProofJson,
+            $aadharProofBase64CodeJson,
+            $timestamp,
+            $proof_number,
+            $upload_type,
+            $pawnjewelry_date  // last_settlement = creation
         );
 
         if ($stmt->execute()) {
@@ -486,7 +504,7 @@ else if (isset($obj->receipt_no) && !isset($obj->edit_pawnjewelry_id)) {
             error_log("Interest calculated: Period=$dueMonthsRounded, Amount=$totalInterest for ID=$id");
 
             $result = addTransaction($conn, $name, $original_amount_str, $type1, $pawnjewelry_date);
-            
+
             if ($result) {
                 $output["head"]["code"] = 200;
                 $output["head"]["msg"] = "Pawn jewelry created successfully. Initial Interest: Period=$dueMonthsRounded months, Amount=₹$totalInterest";
@@ -567,7 +585,7 @@ elseif (isset($obj->edit_pawnjewelry_id)) {
         empty(trim($place)) ||
         $original_amount <= 0 ||
         empty(trim($Jewelry_recovery_agreed_period)) ||
-        $interest_rate <= 0 
+        $interest_rate <= 0
     ) {
         error_log("Validation failed for update");
         $output["head"]["code"] = 400;
@@ -697,10 +715,21 @@ elseif (isset($obj->edit_pawnjewelry_id)) {
         WHERE `pawnjewelry_id`=?");
     $stmt->bind_param(
         "ssssssdssssssss",
-        $customer_no, $receipt_no, $name, $customer_details, $place, $mobile_number,
-        $original_amount, $products_json, $Jewelry_recovery_agreed_period, $interest_rate_str, 
-        $proofJson, $proofBase64CodeJson, $aadharProofJson, 
-        $aadharProofBase64CodeJson, $edit_id
+        $customer_no,
+        $receipt_no,
+        $name,
+        $customer_details,
+        $place,
+        $mobile_number,
+        $original_amount,
+        $products_json,
+        $Jewelry_recovery_agreed_period,
+        $interest_rate_str,
+        $proofJson,
+        $proofBase64CodeJson,
+        $aadharProofJson,
+        $aadharProofBase64CodeJson,
+        $edit_id
     );
 
     if ($stmt->execute()) {
@@ -758,9 +787,7 @@ else if (isset($obj->delete_pawnjewelry_id)) {
         $output["head"]["code"] = 400;
         $output["head"]["msg"] = "Please provide all required details.";
     }
-}
-
-elseif (isset($obj->customer_no)) {  
+} elseif (isset($obj->customer_no)) {
     $customer_no = $conn->real_escape_string($obj->customer_no);
     $sql = "SELECT * FROM `pawnjewelry` 
             WHERE `delete_at` = 0 AND `customer_no` = ? 
@@ -823,11 +850,10 @@ elseif (isset($obj->customer_no)) {
         $output["head"]["msg"] = "No records found for this customer";
         $output["body"]["pawnjewelry"] = [];
     }
-}
-else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
+} else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
     $receipt_no = isset($obj->receipt_no) ? trim($conn->real_escape_string($obj->receipt_no)) : '';
     $today = new DateTime();
-    
+
     if (!empty($receipt_no)) {
         // Single receipt report
         $stmt = $conn->prepare("SELECT p.pawnjewelry_date, p.original_amount, p.customer_no, p.name, p.customer_details, p.place, p.mobile_number, p.dateofbirth, p.interest_rate, p.Jewelry_recovery_agreed_period, p.last_interest_settlement_date, r.pawnjewelry_recovery_date 
@@ -837,14 +863,14 @@ else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
         $stmt->bind_param("s", $receipt_no);
         $stmt->execute();
         $result = $stmt->get_result();
-        
+
         if ($result->num_rows === 0) {
             $output["head"]["code"] = 400;
             $output["head"]["msg"] = "Receipt number not found";
             echo json_encode($output, JSON_NUMERIC_CHECK);
             exit();
         }
-        
+
         $pawn_data = $result->fetch_assoc();
         $effective_start = $pawn_data['last_interest_settlement_date'] ?: $pawn_data['pawnjewelry_date'];
         $period_start_date = $effective_start;
@@ -853,7 +879,7 @@ else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
         $interest_rate_str = $pawn_data['interest_rate'] ?? '0';
         $pawn_interest = floatval(str_replace('%', '', $interest_rate_str));  // Keep as percent
         $monthly_interest = round($principal * $pawn_interest / 100, 2);
-        
+
         // Cycle paid: SUM since effective_start
         $paidStmt = $conn->prepare("SELECT SUM(interest_payment_period) AS cycle_paid_months FROM interest WHERE receipt_no = ? AND create_at >= ? AND delete_at = 0");
         $paidStmt->bind_param("ss", $receipt_no, $effective_start);
@@ -862,15 +888,15 @@ else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
         $paidRow = $paidResult->fetch_assoc();
         $paidTotalMonths = floatval($paidRow['cycle_paid_months'] ?? 0);
         $paidStmt->close();
-        
+
         // Determine end date: recovery_date if exists, else today
         $end_date_str = $pawn_data['pawnjewelry_recovery_date'] ? $pawn_data['pawnjewelry_recovery_date'] : null;
         $end_date = $pawn_data['pawnjewelry_recovery_date'] ? new DateTime($pawn_data['pawnjewelry_recovery_date']) : clone $today;
-        
+
         list($monthsFloat, $total_interest) = calculateTotalInterestDue($period_start_date, $principal, $recoveryPeriod, $paidTotalMonths, $pawn_interest, $end_date_str);
-        
+
         $total_due = $principal + $total_interest;
-        
+
         $output["head"]["code"] = 200;
         $output["head"]["msg"] = "Interest Report Generated (Dynamic Rate starting from {$pawn_interest}%) for " . $receipt_no;
         $output["body"] = [
@@ -891,7 +917,6 @@ else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
             'cycle_paid_months' => $paidTotalMonths,
             'end_date_used' => $end_date->format('Y-m-d')
         ];
-        
     } else {
         // All receipts report
         $sql = "SELECT p.pawnjewelry_date, p.original_amount, p.receipt_no, p.customer_no, p.name, p.customer_details, p.place, p.mobile_number, p.dateofbirth, p.interest_rate, p.Jewelry_recovery_agreed_period, p.last_interest_settlement_date, r.pawnjewelry_recovery_date 
@@ -899,14 +924,14 @@ else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
                 LEFT JOIN pawnjewelry_recovery r ON p.receipt_no = r.receipt_no AND r.delete_at = 0 
                 WHERE p.delete_at = 0 ORDER BY p.receipt_no ASC";
         $result = $conn->query($sql);
-        
+
         if ($result === false || $result->num_rows === 0) {
             $output["head"]["code"] = 400;
             $output["head"]["msg"] = "No active pawnjewelry records found";
             echo json_encode($output, JSON_NUMERIC_CHECK);
             exit();
         }
-        
+
         $reports = [];
         while ($row = $result->fetch_assoc()) {
             $effective_start = $row['last_interest_settlement_date'] ?: $row['pawnjewelry_date'];
@@ -917,7 +942,7 @@ else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
             $pawn_interest = floatval(str_replace('%', '', $interest_rate_str));  // percent
             $monthly_interest = round($principal * $pawn_interest / 100, 2);
             $recoveryPeriod = intval($row['Jewelry_recovery_agreed_period'] ?? 0);
-            
+
             // Cycle paid per record
             $paidStmt = $conn->prepare("SELECT SUM(interest_payment_period) AS cycle_paid_months FROM interest WHERE receipt_no = ? AND create_at >= ? AND delete_at = 0");
             $paidStmt->bind_param("ss", $receipt_no_row, $effective_start);
@@ -926,15 +951,15 @@ else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
             $paidRow = $paidResult->fetch_assoc();
             $paidTotalMonths = floatval($paidRow['cycle_paid_months'] ?? 0);
             $paidStmt->close();
-            
+
             // Determine end date: recovery_date if exists, else today
             $end_date_str = $row['pawnjewelry_recovery_date'] ? $row['pawnjewelry_recovery_date'] : null;
             $end_date = $row['pawnjewelry_recovery_date'] ? new DateTime($row['pawnjewelry_recovery_date']) : clone $today;
-            
+
             list($monthsFloat, $total_interest) = calculateTotalInterestDue($period_start_date, $principal, $recoveryPeriod, $paidTotalMonths, $pawn_interest, $end_date_str);
-            
+
             $total_due = $principal + $total_interest;
-            
+
             $reports[] = [
                 'effective_start_date' => $effective_start,
                 'period_start_date' => $period_start_date,
@@ -951,21 +976,18 @@ else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
                 'total_due' => $total_due,
                 'total_months' => $monthsFloat,
                 'cycle_paid_months' => $paidTotalMonths,
-                'end_date_used' => $end_date->format('Y-m-d') 
+                'end_date_used' => $end_date->format('Y-m-d')
             ];
         }
-        
+
         $output["head"]["code"] = 200;
         $output["head"]["msg"] = "Interest Report Generated (Dynamic Rate) for ALL receipts (" . count($reports) . " records)";
         $output["body"]["reports"] = $reports;
     }
-    
-}
-else {
+} else {
     error_log("Parameter mismatch: " . json_encode($obj));
     $output["head"]["code"] = 400;
     $output["head"]["msg"] = "Parameter mismatch";
 }
 
 echo json_encode($output, JSON_NUMERIC_CHECK);
-?>

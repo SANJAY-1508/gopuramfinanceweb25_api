@@ -146,6 +146,17 @@ if (isset($obj->search_text)) {
 }
 // Create Pawn Jewelry
 else if (isset($obj->receipt_no) && !isset($obj->edit_pawnjewelry_id)) {
+
+    if (!isset($obj->login_id) || empty(trim($obj->login_id))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+
+
+    $login_id = $conn->real_escape_string(trim($obj->login_id));
+    $by_name = isset($obj->user_name) ? $conn->real_escape_string(trim($obj->user_name)) : '';
     $pawnjewelry_date = isset($obj->pawnjewelry_date) ? $conn->real_escape_string($obj->pawnjewelry_date) : '';
     $customer_no = isset($obj->customer_no) ? $conn->real_escape_string($obj->customer_no) : '';
     $receipt_no = isset($obj->receipt_no) ? $conn->real_escape_string($obj->receipt_no) : '';
@@ -506,6 +517,24 @@ else if (isset($obj->receipt_no) && !isset($obj->edit_pawnjewelry_id)) {
             $result = addTransaction($conn, $name, $original_amount_str, $type1, $pawnjewelry_date);
 
             if ($result) {
+                // Fetch new row for history
+                $new_json = null;
+                $sql_new = "SELECT * FROM `pawnjewelry` WHERE `pawnjewelry_id` = ? AND `delete_at` = 0";
+                $stmt_new = $conn->prepare($sql_new);
+                $stmt_new->bind_param("s", $uniquePawnJewelryID);
+                $stmt_new->execute();
+                $new_result = $stmt_new->get_result();
+                if ($new_row = $new_result->fetch_assoc()) {
+                    $new_json = json_encode($new_row);
+                }
+                $stmt_new->close();
+
+
+
+                // Log to history
+                $remarks = "Pawn jewelry created";
+                logCustomerHistory($conn, $uniquePawnJewelryID,  $customer_no, "create", null, $new_json, $remarks, $login_id, $by_name);
+
                 $output["head"]["code"] = 200;
                 $output["head"]["msg"] = "Pawn jewelry created successfully. Initial Interest: Period=$dueMonthsRounded months, Amount=₹$totalInterest";
                 $output["body"]["pawnjewelry_id"] = $uniquePawnJewelryID;
@@ -530,6 +559,17 @@ else if (isset($obj->receipt_no) && !isset($obj->edit_pawnjewelry_id)) {
 
 // Update Pawn Jewelry
 elseif (isset($obj->edit_pawnjewelry_id)) {
+
+
+    if (!isset($obj->login_id) || empty(trim($obj->login_id))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+
+    $login_id = $conn->real_escape_string(trim($obj->login_id));
+    $by_name = isset($obj->user_name) ? $conn->real_escape_string(trim($obj->user_name)) : '';
     $edit_id = $conn->real_escape_string($obj->edit_pawnjewelry_id);
     $customer_no = $conn->real_escape_string($obj->customer_no ?? '');
     $receipt_no = $conn->real_escape_string($obj->receipt_no ?? '');
@@ -575,6 +615,18 @@ elseif (isset($obj->edit_pawnjewelry_id)) {
     $old_interest_rate = floatval($pawn_data['interest_rate']);
     $old_original_amount = floatval($pawn_data['original_amount']);
     $old_last_settlement = $pawn_data['last_interest_settlement_date'];
+
+    // Fetch old row for history
+    $old_json = null;
+    $sql_old = "SELECT * FROM `pawnjewelry` WHERE `pawnjewelry_id` = ? AND `delete_at` = 0";
+    $stmt_old = $conn->prepare($sql_old);
+    $stmt_old->bind_param("s", $edit_id);
+    $stmt_old->execute();
+    $old_result = $stmt_old->get_result();
+    if ($old_row = $old_result->fetch_assoc()) {
+        $old_json = json_encode($old_row);
+    }
+    $stmt_old->close();
 
     // Validate 
     if (
@@ -735,6 +787,22 @@ elseif (isset($obj->edit_pawnjewelry_id)) {
     if ($stmt->execute()) {
         error_log("Update success for $edit_id");
 
+        // Fetch new row after update
+        $new_json = null;
+        $sql_new = "SELECT * FROM `pawnjewelry` WHERE `pawnjewelry_id` = ? AND `delete_at` = 0";
+        $stmt_new = $conn->prepare($sql_new);
+        $stmt_new->bind_param("s", $edit_id);
+        $stmt_new->execute();
+        $new_result = $stmt_new->get_result();
+        if ($new_row = $new_result->fetch_assoc()) {
+            $new_json = json_encode($new_row);
+        }
+        $stmt_new->close();
+
+        // Log to history
+        $remarks = "Pawn jewelry updated";
+        logCustomerHistory($conn, $edit_id,  $customer_no, "update", $old_json, $new_json, $remarks, $login_id, $by_name);
+
         // Recalc interest if amount or rate changed (only if no payments)
         if (($old_original_amount != $original_amount || $old_interest_rate != $interest_rate) && !$interestPaid) {
             $recoveryPeriod = intval($Jewelry_recovery_agreed_period);
@@ -768,15 +836,59 @@ elseif (isset($obj->edit_pawnjewelry_id)) {
 
 // <<<<<<<<<<===================== Delete Pawn Jewelry =====================>>>>>>>>>>  
 else if (isset($obj->delete_pawnjewelry_id)) {
+
+    if (!isset($obj->login_id) || empty(trim($obj->login_id))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+
+    $login_id = $conn->real_escape_string(trim($obj->login_id));
+    $by_name = isset($obj->user_name) ? $conn->real_escape_string(trim($obj->user_name)) : '';
     $delete_pawnjewelry_id = $conn->real_escape_string($obj->delete_pawnjewelry_id);
+
+    // Initialize variables to avoid undefined warnings
+    $old_json = null;
+    $customer_no = '';
+
+    // Fetch old row for history
+    $sql_old = "SELECT * FROM `pawnjewelry` WHERE `pawnjewelry_id` = ? AND `delete_at` = 0";
+    $stmt_old = $conn->prepare($sql_old);
+    $stmt_old->bind_param("s", $delete_pawnjewelry_id);
+    $stmt_old->execute();
+    $old_result = $stmt_old->get_result();
+    $row_found = false;
+    if ($old_row = $old_result->fetch_assoc()) {
+        $old_json = json_encode($old_row);
+        $customer_no = $old_row['customer_no'] ?? '';
+        $row_found = true;
+    }
+    $stmt_old->close();
 
     if (!empty($delete_pawnjewelry_id)) {
         $stmt = $conn->prepare("UPDATE `pawnjewelry` SET `delete_at` = 1 WHERE `pawnjewelry_id` = ?");
         $stmt->bind_param("s", $delete_pawnjewelry_id);
         if ($stmt->execute()) {
-            error_log("Delete success: $delete_pawnjewelry_id");
-            $output["head"]["code"] = 200;
-            $output["head"]["msg"] = "Pawn jewelry deleted successfully";
+            // FIXED: Check affected rows
+            if ($stmt->affected_rows > 0) {
+                error_log("Delete success: $delete_pawnjewelry_id (affected rows: " . $stmt->affected_rows . ")");
+
+                // FIXED: Only log if row was found (pre-delete)
+                if ($row_found && !empty($customer_no)) {
+                    $remarks = "Pawn jewelry deleted";
+                    logCustomerHistory($conn, $delete_pawnjewelry_id, $customer_no, "delete", $old_json, null, $remarks, $login_id, $by_name);
+                } else {
+                    error_log("Skip history log: Row not found or customer_no empty for $delete_pawnjewelry_id");
+                }
+
+                $output["head"]["code"] = 200;
+                $output["head"]["msg"] = "Pawn jewelry deleted successfully";
+            } else {
+                error_log("Delete no-op: No rows affected for $delete_pawnjewelry_id (already deleted?)");
+                $output["head"]["code"] = 404;
+                $output["head"]["msg"] = "Pawn jewelry not found or already deleted";
+            }
         } else {
             error_log("Delete failed: " . $stmt->error);
             $output["head"]["code"] = 400;

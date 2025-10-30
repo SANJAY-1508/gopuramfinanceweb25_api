@@ -404,3 +404,13 @@ function listTransactions($conn)
     $result = $conn->query($query);
     return $result->fetch_all(MYSQLI_ASSOC);
 }
+function logCustomerHistory($conn, $customer_id, $customer_no, $action_type, $old_value, $new_value, $remarks, $by_id, $by_name)
+{
+    $log_timestamp = date('Y-m-d H:i:s');
+    $old_value = $old_value ?? '{}';
+    $new_value = $new_value ?? '{}';
+    $sql = "INSERT INTO `customer_history` (`customer_id`, `customer_no`, `action_type`, `old_value`, `new_value`, `remarks`, `create_by_name`, `create_by_id`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("sssssssss", $customer_id, $customer_no, $action_type, $old_value, $new_value, $remarks, $by_name, $by_id, $log_timestamp);
+    return $stmt->execute();
+}

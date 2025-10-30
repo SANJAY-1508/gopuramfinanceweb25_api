@@ -19,16 +19,7 @@ $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https:
 $domain = $_SERVER['HTTP_HOST'];
 $base_url = $protocol . $domain;
 
-function logCustomerHistory($conn, $customer_id, $customer_no, $action_type, $old_value, $new_value, $remarks, $by_id, $by_name)
-{
-    $log_timestamp = date('Y-m-d H:i:s');
-    $old_value = $old_value ?? '{}';
-    $new_value = $new_value ?? '{}';
-    $sql = "INSERT INTO `customer_history` (`customer_id`, `customer_no`, `action_type`, `old_value`, `new_value`, `remarks`, `create_by_name`, `create_by_id`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sssssssss", $customer_id, $customer_no, $action_type, $old_value, $new_value, $remarks, $by_name, $by_id, $log_timestamp);
-    return $stmt->execute();
-}
+
 
 // <<<<<<<<<<===================== List Customers =====================>>>>>>>>>>
 if (isset($obj['search_text'])) {
@@ -624,6 +615,137 @@ elseif (isset($obj['delete_customer_id'])) {
         $output["head"]["code"] = 400;
         $output["head"]["msg"] = "Customer ID is required";
     }
+}
+if (isset($obj['action']) && $obj['action'] === 'list_customer_history') {
+    $from_date = isset($obj['fromdate']) ? trim($obj['fromdate']) : '';
+    $to_date = isset($obj['todate']) ? trim($obj['todate']) : '';
+    $search_text = isset($obj['search_text']) ? trim($obj['search_text']) : '';
+
+    $query = "SELECT 
+                id, 
+                customer_id, 
+                customer_no, 
+                action_type, 
+                old_value, 
+                new_value, 
+                remarks, 
+                create_by_name, 
+                create_by_id, 
+                created_at
+              FROM customer_history
+              WHERE 1";
+
+    $params = [];
+    $types = '';
+
+    // 🔍 Filter by fromdate & todate
+    if (!empty($from_date) && !empty($to_date)) {
+        $query .= " AND DATE(created_at) BETWEEN ? AND ?";
+        $params[] = $from_date;
+        $params[] = $to_date;
+        $types .= "ss";
+    }
+
+    // 🔍 Filter by customer_no (search)
+    if (!empty($search_text)) {
+        $query .= " AND customer_no LIKE ?";
+        $params[] = "%$search_text%";
+        $types .= "s";
+    }
+
+    $query .= " ORDER BY id DESC";
+
+    $stmt = $conn->prepare($query);
+
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result && $result->num_rows > 0) {
+        $output["head"]["code"] = 200;
+        $output["head"]["msg"] = "Success";
+        $output["body"]["customer_history"] = [];
+
+        while ($row = $result->fetch_assoc()) {
+            // 🧩 Add action_name based on action_type
+            $actionType = strtolower(trim($row['action_type']));
+            switch ($actionType) {
+                case "create":
+                    $row["action_name"] = "Created New Record";
+                    break;
+                case "update":
+                    $row["action_name"] = "Updated Existing Record";
+                    break;
+                case "delete":
+                    $row["action_name"] = "Deleted Record";
+                    break;
+                default:
+                    $row["action_name"] = ucfirst($actionType);
+            }
+
+            // Format created_at for readability
+            $row["created_at"] = date("d-m-Y h:i A", strtotime($row["created_at"]));
+
+            // 🔧 Parse old_value and new_value into actual objects/arrays (no escaped strings, no backslashes)
+            $oldValue = null; // Default to null for empty/deleted
+            $oldDecoded = json_decode($row['old_value'], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($oldDecoded)) {
+                // Clean nested JSON fields (e.g., jewel_product)
+                foreach ($oldDecoded as $key => $value) {
+                    if (is_string($value) && (substr($value, 0, 1) === '[' || substr($value, 0, 1) === '{')) {
+                        $valueClean = str_replace('\\"', '"', $value);
+                        $valueClean = str_replace('\\n', '', $valueClean); // Remove escaped newlines
+                        $innerDecoded = json_decode($valueClean, true);
+                        if (json_last_error() === JSON_ERROR_NONE) {
+                            $oldDecoded[$key] = $innerDecoded;
+                        }
+                    }
+                }
+                $oldValue = $oldDecoded;
+            } elseif ($row['old_value'] === '{}') {
+                $oldValue = new stdClass(); // Empty object
+            } elseif ($row['old_value'] === '[]') {
+                $oldValue = []; // Empty array
+            }
+
+            $newValue = null; // Default to null for empty
+            $newDecoded = json_decode($row['new_value'], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($newDecoded)) {
+                foreach ($newDecoded as $key => $value) {
+                    if (is_string($value) && (substr($value, 0, 1) === '[' || substr($value, 0, 1) === '{')) {
+                        $valueClean = str_replace('\\"', '"', $value);
+                        $valueClean = str_replace('\\n', '', $valueClean);
+                        $innerDecoded = json_decode($valueClean, true);
+                        if (json_last_error() === JSON_ERROR_NONE) {
+                            $newDecoded[$key] = $innerDecoded;
+                        }
+                    }
+                }
+                $newValue = $newDecoded;
+            } elseif ($row['new_value'] === '{}') {
+                $newValue = new stdClass();
+            } elseif ($row['new_value'] === '[]') {
+                $newValue = [];
+            }
+
+            // Replace with parsed objects/arrays (no strings, no \ escapes)
+            $row["old_value"] = $oldValue;
+            $row["new_value"] = $newValue;
+
+            $output["body"]["customer_history"][] = $row;
+        }
+    } else {
+        $output["head"]["code"] = 200;
+        $output["head"]["msg"] = "No records found";
+        $output["body"]["customer_history"] = [];
+    }
+
+    $stmt->close();
+    echo json_encode($output, JSON_NUMERIC_CHECK | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
 } else {
     $output["head"]["code"] = 400;
     $output["head"]["msg"] = "Invalid or missing parameters";

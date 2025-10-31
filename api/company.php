@@ -41,29 +41,28 @@ if (isset($obj->search_text)) {
 
     // if (!empty($company_name) && !empty($mobile_number) && !empty($gst) && !empty($place) && !empty($pincode)) {
 
-        if (numericCheck($mobile_number) && strlen($mobile_number) == 10) {
+    if (numericCheck($mobile_number) && strlen($mobile_number) == 10) {
 
-            if (isset($obj->edit_company_id)) {
-                $edit_id = $obj->edit_company_id;
+        if (isset($obj->edit_company_id)) {
+            $edit_id = $obj->edit_company_id;
 
-                $updateCompany = "UPDATE `company` SET `company_name`='$company_name',`mobile_number`='$mobile_number',`gst`='$gst',`pincode`='$pincode',`place`='$place' WHERE `user_id`='$edit_id'";
+            $updateCompany = "UPDATE `company` SET `company_name`='$company_name',`mobile_number`='$mobile_number',`gst`='$gst',`pincode`='$pincode',`place`='$place' WHERE `user_id`='$edit_id'";
 
-                if ($conn->query($updateCompany)) {
-                    $output["head"]["code"] = 200;
-                    $output["head"]["msg"] = "Successfully Company Details Updated";
-                } else {
-                    $output["head"]["code"] = 400;
-                    $output["head"]["msg"] = "Failed to connect. Please try again." . $conn->error;
-                }
+            if ($conn->query($updateCompany)) {
+                $output["head"]["code"] = 200;
+                $output["head"]["msg"] = "Successfully Company Details Updated";
             } else {
                 $output["head"]["code"] = 400;
-                $output["head"]["msg"] = "Company not found.";
+                $output["head"]["msg"] = "Failed to connect. Please try again." . $conn->error;
             }
-
         } else {
             $output["head"]["code"] = 400;
-            $output["head"]["msg"] = "Invalid Phone Number.";
+            $output["head"]["msg"] = "Company not found.";
         }
+    } else {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Invalid Phone Number.";
+    }
 
     // } else {
     //     $output["head"]["code"] = 400;

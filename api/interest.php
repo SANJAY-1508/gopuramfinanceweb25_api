@@ -166,7 +166,7 @@ elseif (isset($obj->receipt_no) && empty($obj->edit_interest_id)) {
     $customer_no = $pawnData['customer_no'];
     $pawn_original_amount = $pawnData['original_amount'];
     $pawn_interest_rate = $pawnData['interest_rate'];
-    $current_interest_payment_period = (int)$pawnData['interest_payment_period'];
+    $current_interest_payment_period = floatval($pawnData['interest_payment_period']);
     $current_interest_payment_amount = $pawnData['interest_payment_amount'];
 
     $interest_rate_value = floatval(str_replace('%', '', $pawn_interest_rate)) / 100;
@@ -271,7 +271,7 @@ elseif (isset($obj->receipt_no) && empty($obj->edit_interest_id)) {
             interest_payment_amount = ?,
             last_interest_settlement_date = ?  
             WHERE receipt_no = ? AND delete_at = 0");
-        $stmt->bind_param("idss", $new_interest_payment_period, $new_interest_payment_amount, $interest_receive_date, $receipt_no);
+        $stmt->bind_param("ddss", $new_interest_payment_period, $new_interest_payment_amount, $interest_receive_date, $receipt_no);
         $stmt->execute();
         $stmt->close();
 
@@ -431,7 +431,7 @@ elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
             $pawnData = $pawnResult->fetch_assoc();
             $pawn_original_amount = floatval($pawnData['original_amount']);
             $pawn_interest_rate = $pawnData['interest_rate'];
-            $current_period = intval($pawnData['interest_payment_period']);
+            $current_period = floatval($pawnData['interest_payment_period']);
             $current_amount = floatval($pawnData['interest_payment_amount']);
 
             // Calculate interest rate value
@@ -455,7 +455,7 @@ elseif (isset($obj->edit_interest_id) && !empty($obj->edit_interest_id)) {
                 interest_payment_amount = ?,
                 last_interest_settlement_date = ? 
                 WHERE receipt_no = ? AND delete_at = 0");
-            $updatePawn->bind_param("idss", $new_interest_payment_period, $new_interest_payment_amount, $interest_receive_date, $receipt_no);
+            $updatePawn->bind_param("ddss", $new_interest_payment_period, $new_interest_payment_amount, $interest_receive_date, $receipt_no);
             if (!$updatePawn->execute()) {
                 error_log("Pawnjewelry update failed after interest edit: " . $updatePawn->error);
             }
@@ -537,7 +537,7 @@ else if (isset($obj->delete_interest_id)) {
                 $pawnData = $pawnResult->fetch_assoc();
                 $pawn_original_amount = floatval($pawnData['original_amount']);
                 $interest_rate = $pawnData['interest_rate'];
-                $current_period = intval($pawnData['interest_payment_period']);
+                $current_period = floatval($pawnData['interest_payment_period']);
                 $current_amount = floatval($pawnData['interest_payment_amount']);
 
                 // Calculate interest rate as decimal (e.g., 2% => 0.02)
@@ -557,7 +557,7 @@ else if (isset($obj->delete_interest_id)) {
                     interest_payment_amount = ?,
                     last_interest_settlement_date = NULL
                     WHERE receipt_no = ? AND delete_at = 0");
-                    $updatePawn->bind_param("ids", $new_interest_payment_period, $new_interest_payment_amount, $receipt_no);
+                    $updatePawn->bind_param("dds", $new_interest_payment_period, $new_interest_payment_amount, $receipt_no);
                     $updatePawn->execute();
                     $updatePawn->close();
                 } else {

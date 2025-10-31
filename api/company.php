@@ -31,13 +31,14 @@ if (isset($obj->search_text)) {
         $output["head"]["code"] = 400;
         $output["head"]["msg"] = "Company Details Not Found";
     }
-} else if (isset($obj->company_name) && isset($obj->mobile_number) && isset($obj->gst) && isset($obj->place) && isset($obj->pincode)) {
+} else if (isset($obj->company_name) && isset($obj->mobile_number) && isset($obj->gst) && isset($obj->place) && isset($obj->pincode) && isset($obj->jewel_price_details)) {
 
     $company_name = $obj->company_name;
     $mobile_number = $obj->mobile_number;
     $gst = $obj->gst;
     $place = $obj->place;
     $pincode = $obj->pincode;
+    $jewel_price_details = $obj->jewel_price_details;
 
     // if (!empty($company_name) && !empty($mobile_number) && !empty($gst) && !empty($place) && !empty($pincode)) {
 
@@ -46,7 +47,7 @@ if (isset($obj->search_text)) {
         if (isset($obj->edit_company_id)) {
             $edit_id = $obj->edit_company_id;
 
-            $updateCompany = "UPDATE `company` SET `company_name`='$company_name',`mobile_number`='$mobile_number',`gst`='$gst',`pincode`='$pincode',`place`='$place' WHERE `user_id`='$edit_id'";
+            $updateCompany = "UPDATE `company` SET `company_name`='$company_name',`mobile_number`='$mobile_number',`gst`='$gst',`pincode`='$pincode',`place`='$place',`jewel_price_details`='$jewel_price_details' WHERE `user_id`='$edit_id'";
 
             if ($conn->query($updateCompany)) {
                 $output["head"]["code"] = 200;

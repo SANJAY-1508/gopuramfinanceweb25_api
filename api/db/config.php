@@ -394,16 +394,16 @@ function addTransaction($conn, $description, $amount, $type, $date)
     }
 }
 
+// List all transactions
 
-/**
- * List all transactions
- */
 function listTransactions($conn)
 {
     $query = "SELECT * FROM transactions ORDER BY transaction_date DESC";
     $result = $conn->query($query);
     return $result->fetch_all(MYSQLI_ASSOC);
 }
+
+
 function logCustomerHistory($conn, $customer_id, $customer_no, $action_type, $old_value, $new_value, $remarks, $by_id, $by_name)
 {
     $log_timestamp = date('Y-m-d H:i:s');

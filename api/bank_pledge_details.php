@@ -41,12 +41,12 @@ if (isset($obj['search_text'])) {
         $output["head"]["msg"] = "Success";
         $output["body"]["bank_pledge_details"] = [];
         while ($row = $result->fetch_assoc()) {
-            $row['proof'] = json_decode($row['proof'] ?? '[]', true) ?? [];
-            $row['proof_base64code'] = json_decode($row['proof_base64code'] ?? '[]', true) ?? [];
+            $row['proof'] = json_decode($row['proof'], true) ?? [];
+            $row['proof_base64code'] = json_decode($row['proof_base64code'], true) ?? [];
             $full_proof_urls = [];
             foreach ($row['proof'] as $proof_path) {
-                // Normalize and remove leading "../" safely
-                $cleaned_path = preg_replace('#^\.\./#', '', $proof_path);
+                // Normalize and remove leading "../"
+                $cleaned_path = ltrim($proof_path, '../');
                 $full_url = $base_url . '/' . $cleaned_path;
                 $full_proof_urls[] = $full_url;
             }
@@ -110,53 +110,62 @@ else if (isset($obj['customer_no']) && isset($obj['receipt_no']) && isset($obj['
         foreach ($proofArray as $base64File) {
             if (!isset($base64File['data']) || !is_string($base64File['data'])) {
                 $output["head"]["code"] = 400;
-                $output["head"]["msg"] = "Invalid file format for proof. Expected Base64 encoded string.";
+                $output["head"]["msg"] = "Invalid file format for proof. Expected Base64 encoded string or URL.";
                 echo json_encode($output, JSON_NUMERIC_CHECK);
                 exit();
             }
 
-            $proofBase64Codes[] = $base64File['data'];
-            $fileData = $base64File['data'];
-            $fileName = uniqid("file_");
-            $filePath = "";
+            $data = $base64File['data'];
 
-            if (preg_match('/^data:application\/pdf;base64,/', $fileData)) {
-                $fileName .= ".pdf";
-                $filePath = "../Uploads/pdfs/" . $fileName;
-            } elseif (preg_match('/^data:image\/(\w+);base64,/', $fileData, $type)) {
-                $fileName .= "." . strtolower($type[1]);
-                $filePath = "../Uploads/images/" . $fileName;
+            if (strpos($data, 'http') === 0) {
+                // Existing file URL
+                $full_url = $data;
+                $cleaned_path = str_replace($base_url . '/', '', $full_url);
+                $relative_path = '../' . $cleaned_path;
+                $proofPaths[] = $relative_path;
+                // No base64 for existing
             } else {
-                $output["head"]["code"] = 400;
-                $output["head"]["msg"] = "Unsupported file type for proof.";
-                echo json_encode($output, JSON_NUMERIC_CHECK);
-                exit();
-            }
+                // New base64 file
+                $proofBase64Codes[] = $data;
+                $fileName = uniqid("file_");
+                $filePath = "";
 
-            $fileData = preg_replace('/^data:.*;base64,/', '', $fileData);
-            $decodedFile = base64_decode($fileData);
-            if ($decodedFile === false) {
-                $output["head"]["code"] = 400;
-                $output["head"]["msg"] = "Base64 decoding failed for proof.";
-                echo json_encode($output, JSON_NUMERIC_CHECK);
-                exit();
-            }
+                if (preg_match('/^data:application\/pdf;base64,/', $data)) {
+                    $fileName .= ".pdf";
+                    $filePath = "../Uploads/pdfs/" . $fileName;
+                } elseif (preg_match('/^data:image\/(\w+);base64,/', $data, $type)) {
+                    $fileName .= "." . strtolower($type[1]);
+                    $filePath = "../Uploads/images/" . $fileName;
+                } else {
+                    $output["head"]["code"] = 400;
+                    $output["head"]["msg"] = "Unsupported file type for proof.";
+                    echo json_encode($output, JSON_NUMERIC_CHECK);
+                    exit();
+                }
 
-            $directory = dirname($filePath);
-            if (!is_dir($directory)) {
-                mkdir($directory, 0777, true);
-            }
+                $fileData = preg_replace('/^data:.*;base64,/', '', $data);
+                $decodedFile = base64_decode($fileData);
+                if ($decodedFile === false) {
+                    $output["head"]["code"] = 400;
+                    $output["head"]["msg"] = "Base64 decoding failed for proof.";
+                    echo json_encode($output, JSON_NUMERIC_CHECK);
+                    exit();
+                }
 
-            if (file_put_contents($filePath, $decodedFile) === false) {
-                $output["head"]["code"] = 400;
-                $output["head"]["msg"] = "Failed to save the proof file.";
-                echo json_encode($output, JSON_NUMERIC_CHECK);
-                exit();
-            }
+                $directory = dirname($filePath);
+                if (!is_dir($directory)) {
+                    mkdir($directory, 0777, true);
+                }
 
-            $publicPath = str_replace("../", "", $filePath);
-            $networkPath = $base_url . "/" . $publicPath;
-            $proofPaths[] = $filePath;
+                if (file_put_contents($filePath, $decodedFile) === false) {
+                    $output["head"]["code"] = 400;
+                    $output["head"]["msg"] = "Failed to save the proof file.";
+                    echo json_encode($output, JSON_NUMERIC_CHECK);
+                    exit();
+                }
+
+                $proofPaths[] = $filePath;
+            }
         }
     }
 
@@ -183,8 +192,6 @@ else if (isset($obj['customer_no']) && isset($obj['receipt_no']) && isset($obj['
 
             if (isset($obj['edit_bank_pledge_id'])) {
                 $edit_id = $conn->real_escape_string(trim($obj['edit_bank_pledge_id']));
-
-                // Fetch old row for history (if needed, but skipping history for now)
 
                 // Fix: Use prepared date values in UPDATE
                 $updatePledge = "UPDATE `bank_pledge_details` SET `customer_no`='$customer_no',`receipt_no`='$receipt_no',`customer_id`='$customer_id',`pawnjewelry_id`='$pawnjewelry_id',`bank_pledge_date`='$bank_pledge_date',`bank_loan_no`='$bank_loan_no',`bank_assessor_name`='$bank_assessor_name',`bank_name`='$bank_name',`bank_pawn_value`='$bank_pawn_value',`bank_interest`='$bank_interest',`bank_due_date`=$bank_due_date,`closing_date`=$closing_date,`closing_amount`='$closing_amount',`proof`='$proofJson',`proof_base64code`='$proofBase64CodeJson',`updated_by_id`='$login_id' WHERE `bank_pledge_details_id`='$edit_id'";

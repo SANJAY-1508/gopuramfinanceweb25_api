@@ -11,22 +11,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 header('Content-Type: application/json; charset=utf-8');
 
 $json = file_get_contents('php://input');
-$obj = json_decode($json);
+$obj = json_decode($json, true);
 $output = array();
 
 date_default_timezone_set('Asia/Calcutta');
 $timestamp = date('Y-m-d H:i:s');
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https://" : "http://";
+$domain = $_SERVER['HTTP_HOST'];
+$base_url = $protocol . $domain;
 
 // <<<<<<<<<<===================== This is to list bank_pledge_details =====================>>>>>>>>>>
-if (isset($obj->search_text)) {
+if (isset($obj['search_text'])) {
 
-    $search_text = $obj->search_text;
-    $sql = "SELECT * FROM `bank_pledge_details` WHERE `delete_at` = 0 AND (`customer_no` LIKE '%$search_text%' OR `receipt_no` LIKE '%$search_text%' OR `bank_loan_no` LIKE '%$search_text%') ORDER BY `id` DESC";
-    $result = $conn->query($sql);
+    if (!$conn || !($conn instanceof mysqli)) {
+        $output["head"]["code"] = 500;
+        $output["head"]["msg"] = "Database connection not established";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+    $search_text = $conn->real_escape_string(trim($obj['search_text']));
+    $sql = "SELECT * FROM `bank_pledge_details` WHERE `delete_at` = 0 AND (`customer_no` LIKE ? OR `receipt_no` LIKE ? OR `bank_loan_no` LIKE ?) ORDER BY `id` DESC";
+    $stmt = $conn->prepare($sql);
+    $search_param = "%$search_text%";
+    $stmt->bind_param("sss", $search_param, $search_param, $search_param);
+    $stmt->execute();
+    $result = $stmt->get_result();
     if ($result->num_rows > 0) {
+        $output["head"]["code"] = 200;
+        $output["head"]["msg"] = "Success";
+        $output["body"]["bank_pledge_details"] = [];
         while ($row = $result->fetch_assoc()) {
-            $output["head"]["code"] = 200;
-            $output["head"]["msg"] = "Success";
+            $row['proof'] = json_decode($row['proof'] ?? '[]', true) ?? [];
+            $row['proof_base64code'] = json_decode($row['proof_base64code'] ?? '[]', true) ?? [];
+            $full_proof_urls = [];
+            foreach ($row['proof'] as $proof_path) {
+                // Normalize and remove leading "../" safely
+                $cleaned_path = preg_replace('#^\.\./#', '', $proof_path);
+                $full_url = $base_url . '/' . $cleaned_path;
+                $full_proof_urls[] = $full_url;
+            }
+            $row['proof'] = $full_proof_urls;
             $output["body"]["bank_pledge_details"][] = $row;
         }
     } else {
@@ -34,26 +58,110 @@ if (isset($obj->search_text)) {
         $output["head"]["msg"] = "bank_pledge_details records not found";
         $output["body"]["bank_pledge_details"] = [];
     }
+    $stmt->close();
 }
 // <<<<<<<<<<===================== This is to Create and Edit bank_pledge_details =====================>>>>>>>>>>
-else if (isset($obj->customer_no) && isset($obj->receipt_no) && isset($obj->bank_pledge_date)) {
+else if (isset($obj['customer_no']) && isset($obj['receipt_no']) && isset($obj['bank_pledge_date'])) {
 
-    $customer_no = $obj->customer_no;
-    $receipt_no = $obj->receipt_no;
-    $bank_pledge_date = $obj->bank_pledge_date;
-    $bank_loan_no = isset($obj->bank_loan_no) ? $obj->bank_loan_no : '';
-    $bank_assessor_name = isset($obj->bank_assessor_name) ? $obj->bank_assessor_name : '';
-    $bank_name = isset($obj->bank_name) ? $obj->bank_name : '';
-    $bank_pawn_value = !empty($obj->bank_pawn_value) ? $obj->bank_pawn_value : 0;
-    $bank_interest = !empty($obj->bank_interest) ? $obj->bank_interest : 0;
-    $bank_due_date_raw = isset($obj->bank_due_date) ? $obj->bank_due_date : '';
-    $closing_date_raw = isset($obj->closing_date) ? $obj->closing_date : '';
-    $closing_amount = !empty($obj->closing_amount) ? $obj->closing_amount : 0;
+    if (!isset($obj['login_id']) || empty(trim($obj['login_id']))) {
+        $output["head"]["code"] = 400;
+        $output["head"]["msg"] = "Login ID is required";
+        echo json_encode($output, JSON_NUMERIC_CHECK);
+        exit;
+    }
+    $login_id = $conn->real_escape_string(trim($obj['login_id']));
+    $by_name = isset($obj['user_name']) ? $conn->real_escape_string(trim($obj['user_name'])) : '';
+
+    $customer_no = $conn->real_escape_string(trim($obj['customer_no']));
+    $receipt_no = $conn->real_escape_string(trim($obj['receipt_no']));
+    $bank_pledge_date = $conn->real_escape_string(trim($obj['bank_pledge_date']));
+    $bank_loan_no = isset($obj['bank_loan_no']) ? $conn->real_escape_string(trim($obj['bank_loan_no'])) : '';
+    $bank_assessor_name = isset($obj['bank_assessor_name']) ? $conn->real_escape_string(trim($obj['bank_assessor_name'])) : '';
+    $bank_name = isset($obj['bank_name']) ? $conn->real_escape_string(trim($obj['bank_name'])) : '';
+    $bank_pawn_value = !empty($obj['bank_pawn_value']) ? $obj['bank_pawn_value'] : 0;
+    $bank_interest = !empty($obj['bank_interest']) ? $obj['bank_interest'] : 0;
+    $bank_due_date_raw = isset($obj['bank_due_date']) ? $obj['bank_due_date'] : '';
+    $closing_date_raw = isset($obj['closing_date']) ? $obj['closing_date'] : '';
+    $closing_amount = !empty($obj['closing_amount']) ? $obj['closing_amount'] : 0;
 
     // Fix: Prepare SQL-safe values for dates (NULL if empty)
 
     $bank_due_date = !empty($bank_due_date_raw) ? "'$bank_due_date_raw'" : 'NULL';
     $closing_date = !empty($closing_date_raw) ? "'$closing_date_raw'" : 'NULL';
+
+    $proof = isset($obj['proof']) ? $obj['proof'] : [];
+    $proofPaths = [];
+    $proofBase64Codes = [];
+
+    // Process proof files
+    if (!empty($proof)) {
+        if (is_string($proof)) {
+            $base64File = ['data' => $proof];
+            $proofArray = [$base64File];
+        } elseif (is_array($proof)) {
+            $proofArray = $proof;
+        } else {
+            $output["head"]["code"] = 400;
+            $output["head"]["msg"] = "Proof must be a Base64 string or an array of Base64 strings.";
+            echo json_encode($output, JSON_NUMERIC_CHECK);
+            exit();
+        }
+
+        foreach ($proofArray as $base64File) {
+            if (!isset($base64File['data']) || !is_string($base64File['data'])) {
+                $output["head"]["code"] = 400;
+                $output["head"]["msg"] = "Invalid file format for proof. Expected Base64 encoded string.";
+                echo json_encode($output, JSON_NUMERIC_CHECK);
+                exit();
+            }
+
+            $proofBase64Codes[] = $base64File['data'];
+            $fileData = $base64File['data'];
+            $fileName = uniqid("file_");
+            $filePath = "";
+
+            if (preg_match('/^data:application\/pdf;base64,/', $fileData)) {
+                $fileName .= ".pdf";
+                $filePath = "../Uploads/pdfs/" . $fileName;
+            } elseif (preg_match('/^data:image\/(\w+);base64,/', $fileData, $type)) {
+                $fileName .= "." . strtolower($type[1]);
+                $filePath = "../Uploads/images/" . $fileName;
+            } else {
+                $output["head"]["code"] = 400;
+                $output["head"]["msg"] = "Unsupported file type for proof.";
+                echo json_encode($output, JSON_NUMERIC_CHECK);
+                exit();
+            }
+
+            $fileData = preg_replace('/^data:.*;base64,/', '', $fileData);
+            $decodedFile = base64_decode($fileData);
+            if ($decodedFile === false) {
+                $output["head"]["code"] = 400;
+                $output["head"]["msg"] = "Base64 decoding failed for proof.";
+                echo json_encode($output, JSON_NUMERIC_CHECK);
+                exit();
+            }
+
+            $directory = dirname($filePath);
+            if (!is_dir($directory)) {
+                mkdir($directory, 0777, true);
+            }
+
+            if (file_put_contents($filePath, $decodedFile) === false) {
+                $output["head"]["code"] = 400;
+                $output["head"]["msg"] = "Failed to save the proof file.";
+                echo json_encode($output, JSON_NUMERIC_CHECK);
+                exit();
+            }
+
+            $publicPath = str_replace("../", "", $filePath);
+            $networkPath = $base_url . "/" . $publicPath;
+            $proofPaths[] = $filePath;
+        }
+    }
+
+    $proofJson = json_encode($proofPaths, JSON_UNESCAPED_SLASHES);
+    $proofBase64CodeJson = json_encode($proofBase64Codes, JSON_UNESCAPED_SLASHES);
 
     // Fetch customer_id from customer table using customer_no
     $customerQuery = $conn->query("SELECT `customer_id` as customer_id FROM `customer` WHERE `customer_no` = '$customer_no' AND `delete_at` = 0");
@@ -73,11 +181,13 @@ else if (isset($obj->customer_no) && isset($obj->receipt_no) && isset($obj->bank
             $pawnRow = $pawnQuery->fetch_assoc();
             $pawnjewelry_id = $pawnRow['pawnjewelry_id'];
 
-            if (isset($obj->edit_bank_pledge_id)) {
-                $edit_id = $obj->edit_bank_pledge_id;
+            if (isset($obj['edit_bank_pledge_id'])) {
+                $edit_id = $conn->real_escape_string(trim($obj['edit_bank_pledge_id']));
+
+                // Fetch old row for history (if needed, but skipping history for now)
 
                 // Fix: Use prepared date values in UPDATE
-                $updatePledge = "UPDATE `bank_pledge_details` SET `customer_no`='$customer_no',`receipt_no`='$receipt_no',`customer_id`='$customer_id',`pawnjewelry_id`='$pawnjewelry_id',`bank_pledge_date`='$bank_pledge_date',`bank_loan_no`='$bank_loan_no',`bank_assessor_name`='$bank_assessor_name',`bank_name`='$bank_name',`bank_pawn_value`='$bank_pawn_value',`bank_interest`='$bank_interest',`bank_due_date`=$bank_due_date,`closing_date`=$closing_date,`closing_amount`='$closing_amount' WHERE `bank_pledge_details_id`='$edit_id'";
+                $updatePledge = "UPDATE `bank_pledge_details` SET `customer_no`='$customer_no',`receipt_no`='$receipt_no',`customer_id`='$customer_id',`pawnjewelry_id`='$pawnjewelry_id',`bank_pledge_date`='$bank_pledge_date',`bank_loan_no`='$bank_loan_no',`bank_assessor_name`='$bank_assessor_name',`bank_name`='$bank_name',`bank_pawn_value`='$bank_pawn_value',`bank_interest`='$bank_interest',`bank_due_date`=$bank_due_date,`closing_date`=$closing_date,`closing_amount`='$closing_amount',`proof`='$proofJson',`proof_base64code`='$proofBase64CodeJson',`updated_by_id`='$login_id' WHERE `bank_pledge_details_id`='$edit_id'";
 
                 if ($conn->query($updatePledge)) {
                     $output["head"]["code"] = 200;
@@ -92,7 +202,7 @@ else if (isset($obj->customer_no) && isset($obj->receipt_no) && isset($obj->bank
                 if ($checkPledge->num_rows == 0) {
 
                     // Fix: Use prepared date values in INSERT (no quotes around NULL)
-                    $createPledge = "INSERT INTO `bank_pledge_details`(`customer_no`,`receipt_no`,`customer_id`,`pawnjewelry_id`,`bank_pledge_date`,`bank_loan_no`,`bank_assessor_name`,`bank_name`,`bank_pawn_value`,`bank_interest`,`bank_due_date`,`closing_date`,`closing_amount`,`create_at`, `delete_at`) VALUES ('$customer_no','$receipt_no','$customer_id','$pawnjewelry_id','$bank_pledge_date','$bank_loan_no','$bank_assessor_name','$bank_name','$bank_pawn_value','$bank_interest',$bank_due_date,$closing_date,'$closing_amount','$timestamp','0')";
+                    $createPledge = "INSERT INTO `bank_pledge_details`(`customer_no`,`receipt_no`,`customer_id`,`pawnjewelry_id`,`bank_pledge_date`,`bank_loan_no`,`bank_assessor_name`,`bank_name`,`bank_pawn_value`,`bank_interest`,`bank_due_date`,`closing_date`,`closing_amount`,`proof`,`proof_base64code`,`create_at`, `delete_at`,`created_by_id`) VALUES ('$customer_no','$receipt_no','$customer_id','$pawnjewelry_id','$bank_pledge_date','$bank_loan_no','$bank_assessor_name','$bank_name','$bank_pawn_value','$bank_interest',$bank_due_date,$closing_date,'$closing_amount','$proofJson','$proofBase64CodeJson','$timestamp','0','$login_id')";
                     if ($conn->query($createPledge)) {
                         $id = $conn->insert_id;
                         $enId = uniqueID('bank_pledge_details', $id);
@@ -116,9 +226,9 @@ else if (isset($obj->customer_no) && isset($obj->receipt_no) && isset($obj->bank
 }
 
 // <<<<<<<<<<===================== This is to Delete the bank_pledge_details =====================>>>>>>>>>>
-else if (isset($obj->delete_bank_pledge_id)) {
+else if (isset($obj['delete_bank_pledge_id'])) {
 
-    $delete_bank_pledge_id = $obj->delete_bank_pledge_id;
+    $delete_bank_pledge_id = $conn->real_escape_string(trim($obj['delete_bank_pledge_id']));
 
     if (!empty($delete_bank_pledge_id)) {
 
@@ -140,3 +250,4 @@ else if (isset($obj->delete_bank_pledge_id)) {
 }
 
 echo json_encode($output, JSON_NUMERIC_CHECK);
+$conn->close();

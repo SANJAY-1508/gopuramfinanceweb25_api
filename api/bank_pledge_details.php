@@ -78,14 +78,14 @@ else if (isset($obj['customer_no']) && isset($obj['receipt_no']) && isset($obj['
     $bank_loan_no = isset($obj['bank_loan_no']) ? $conn->real_escape_string(trim($obj['bank_loan_no'])) : '';
     $bank_assessor_name = isset($obj['bank_assessor_name']) ? $conn->real_escape_string(trim($obj['bank_assessor_name'])) : '';
     $bank_name = isset($obj['bank_name']) ? $conn->real_escape_string(trim($obj['bank_name'])) : '';
-    $bank_pawn_value = !empty($obj['bank_pawn_value']) ? $obj['bank_pawn_value'] : 0;
-    $bank_interest = !empty($obj['bank_interest']) ? $obj['bank_interest'] : 0;
-    $bank_due_date_raw = isset($obj['bank_due_date']) ? $obj['bank_due_date'] : '';
-    $closing_date_raw = isset($obj['closing_date']) ? $obj['closing_date'] : '';
-    $closing_amount = !empty($obj['closing_amount']) ? $obj['closing_amount'] : 0;
+    $bank_pawn_value = !empty($obj['bank_pawn_value']) ? $obj['bank_pawn_value'] : 0;  
+    $bank_interest = !empty($obj['bank_interest']) ? $obj['bank_interest'] : 0;        
+    $bank_due_date_raw = isset($obj['bank_due_date']) ? $obj['bank_due_date'] : '';    
+    $closing_date_raw = isset($obj['closing_date']) ? $obj['closing_date'] : '';       
+    $closing_amount = !empty($obj['closing_amount']) ? $obj['closing_amount'] : 0;     
 
     // Fix: Prepare SQL-safe values for dates (NULL if empty)
-
+    
     $bank_due_date = !empty($bank_due_date_raw) ? "'$bank_due_date_raw'" : 'NULL';
     $closing_date = !empty($closing_date_raw) ? "'$closing_date_raw'" : 'NULL';
 

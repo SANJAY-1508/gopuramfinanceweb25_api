@@ -18,15 +18,41 @@ if (isset($obj->search_text)) {
     $sql = "SELECT * FROM `bank_pledger` WHERE `delete_at` = 0 AND `name` LIKE '%$search_text%' ORDER BY `id` DESC";
     $result = $conn->query($sql);
     if ($result->num_rows > 0) {
+        // Collect all rows first
+        $all_rows = [];
         while ($row = $result->fetch_assoc()) {
-            $output["head"]["code"] = 200;
-            $output["head"]["msg"] = "Success";
-            $output["body"]["bank_pledger"][] = $row;
+            $all_rows[] = $row;
         }
+
+        // Group by bank_loan_no
+        $groups = [];
+        foreach ($all_rows as $row) {
+            $loan_no = $row['bank_loan_no'];
+            if (!isset($groups[$loan_no])) {
+                $groups[$loan_no] = [];
+            }
+            $groups[$loan_no][] = $row;
+        }
+
+        // Build summary array
+        $grouped_summary = [];
+        $s_no = 1;
+        foreach (array_keys($groups) as $loan_no) {
+            $grouped_summary[] = [
+                's_no' => $s_no++,
+                'loan_no' => $loan_no,
+                'count' => count($groups[$loan_no]),
+                'records' => $groups[$loan_no]
+            ];
+        }
+
+        $output["head"]["code"] = 200;
+        $output["head"]["msg"] = "Success";
+        $output["body"]["grouped_pledger"] = $grouped_summary;
     } else {
         $output["head"]["code"] = 200;
         $output["head"]["msg"] = "bank_pledger records not found";
-        $output["body"]["bank_pledger"] = [];
+        $output["body"]["grouped_pledger"] = [];
     }
 }
 // <<<<<<<<<<===================== This is to Create bank_pledger =====================>>>>>>>>>>

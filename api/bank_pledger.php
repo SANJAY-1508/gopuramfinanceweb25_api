@@ -23,17 +23,15 @@ if (isset($obj->search_text)) {
         while ($row = $result->fetch_assoc()) {
             $all_rows[] = $row;
         }
-
-        // Group by bank_loan_no
+        // Group by pawn_loan_no
         $groups = [];
         foreach ($all_rows as $row) {
-            $loan_no = $row['bank_loan_no'];
+            $loan_no = $row['pawn_loan_no'];
             if (!isset($groups[$loan_no])) {
                 $groups[$loan_no] = [];
             }
             $groups[$loan_no][] = $row;
         }
-
         // Build summary array
         $grouped_summary = [];
         $s_no = 1;
@@ -45,7 +43,6 @@ if (isset($obj->search_text)) {
                 'records' => $groups[$loan_no]
             ];
         }
-
         $output["head"]["code"] = 200;
         $output["head"]["msg"] = "Success";
         $output["body"]["grouped_pledger"] = $grouped_summary;
@@ -64,13 +61,14 @@ else if (!isset($obj->edit_bank_pledger_id) && isset($obj->name)) {
     $bank_details = isset($obj->bank_details) ? $obj->bank_details : null;
     $pledge_date = isset($obj->pledge_date) ? $obj->pledge_date : null;
     $bank_loan_no = isset($obj->bank_loan_no) ? $obj->bank_loan_no : null;
+    $pawn_loan_no = isset($obj->pawn_loan_no) ? $obj->pawn_loan_no : null;
     $pawn_value = isset($obj->pawn_value) ? $obj->pawn_value : null;
     $interest_rate = isset($obj->interest_rate) ? $obj->interest_rate : null;
     $duration_month = isset($obj->duration_month) ? $obj->duration_month : null;
     $interest_amount = isset($obj->interest_amount) ? $obj->interest_amount : null;
     $pledge_due_date = isset($obj->pledge_due_date) ? $obj->pledge_due_date : null;
     $additional_charges = isset($obj->additional_charges) ? $obj->additional_charges : null;
-    $bankCheck = $conn->query("SELECT `id` FROM `bank_pledger` WHERE `bank_loan_no`='$bank_loan_no' AND `status`='Active' AND delete_at = 0");
+    $bankCheck = $conn->query("SELECT `id` FROM `bank_pledger` WHERE `pawn_loan_no`='$pawn_loan_no' AND `status`='Active' AND delete_at = 0");
     if ($bankCheck->num_rows == 0) {
         // Validation for creation: Check account_limit and pledge_count_limit
         $validationPassed = false;
@@ -82,7 +80,6 @@ else if (!isset($obj->edit_bank_pledger_id) && isset($obj->name)) {
             if ($detailsResult->num_rows > 0) {
                 $detailsRow = $detailsResult->fetch_assoc();
                 $current_bank_details = json_decode($detailsRow['bank_details'], true);
-
                 $new_bank_details_array = json_decode($bank_details, true);
                 if (json_last_error() === JSON_ERROR_NONE && is_array($current_bank_details) && is_array($new_bank_details_array) && count($new_bank_details_array) > 0) {
                     // Assuming only one bank is selected (as per React code)
@@ -123,7 +120,7 @@ else if (!isset($obj->edit_bank_pledger_id) && isset($obj->name)) {
             $output["head"]["code"] = 400;
             $output["head"]["msg"] = $validationMsg ?: "Validation failed.";
         } else {
-            $createBankPledger = "INSERT INTO `bank_pledger`(`bank_pledger_details_id`, `name`, `mobile_no`, `address`, `bank_details`, `pledge_date`, `bank_loan_no`, `pawn_value`, `interest_rate`, `duration_month`, `interest_amount`, `pledge_due_date`, `additional_charges`, `status`, `create_at`, `delete_at`) VALUES ('$bank_pledger_details_id', '$name', '$mobile_no', '$address', '$bank_details', '$pledge_date', '$bank_loan_no', '$pawn_value', '$interest_rate', '$duration_month', '$interest_amount', '$pledge_due_date', '$additional_charges', 'Active', '$timestamp', '0')";
+            $createBankPledger = "INSERT INTO `bank_pledger`(`bank_pledger_details_id`, `name`, `mobile_no`, `address`, `bank_details`, `pledge_date`, `bank_loan_no`, `pawn_loan_no`, `pawn_value`, `interest_rate`, `duration_month`, `interest_amount`, `pledge_due_date`, `additional_charges`, `status`, `create_at`, `delete_at`) VALUES ('$bank_pledger_details_id', '$name', '$mobile_no', '$address', '$bank_details', '$pledge_date', '$bank_loan_no', '$pawn_loan_no', '$pawn_value', '$interest_rate', '$duration_month', '$interest_amount', '$pledge_due_date', '$additional_charges', 'Active', '$timestamp', '0')";
             if ($conn->query($createBankPledger)) {
                 $id = $conn->insert_id;
                 $enId = uniqueID('bank_pledger', $id);
@@ -158,7 +155,7 @@ else if (!isset($obj->edit_bank_pledger_id) && isset($obj->name)) {
         }
     } else {
         $output["head"]["code"] = 400;
-        $output["head"]["msg"] = "bank_loan_no Already Exist and Active.";
+        $output["head"]["msg"] = "loan_no Already Exist and Active.";
     }
 }
 // <<<<<<<<<<===================== This is to Edit and Closing bank_pledger =====================>>>>>>>>>>
@@ -222,13 +219,14 @@ else if (isset($obj->edit_bank_pledger_id)) {
         $bank_details = isset($obj->bank_details) ? $obj->bank_details : null;
         $pledge_date = isset($obj->pledge_date) ? $obj->pledge_date : null;
         $bank_loan_no = isset($obj->bank_loan_no) ? $obj->bank_loan_no : null;
+        $pawn_loan_no = isset($obj->pawn_loan_no) ? $obj->pawn_loan_no : null;
         $pawn_value = isset($obj->pawn_value) ? $obj->pawn_value : null;
         $interest_rate = isset($obj->interest_rate) ? $obj->interest_rate : null;
         $duration_month = isset($obj->duration_month) ? $obj->duration_month : null;
         $interest_amount = isset($obj->interest_amount) ? $obj->interest_amount : null;
         $pledge_due_date = isset($obj->pledge_due_date) ? $obj->pledge_due_date : null;
         $additional_charges = isset($obj->additional_charges) ? $obj->additional_charges : null;
-        $updateBankPledger = "UPDATE `bank_pledger` SET `bank_pledger_details_id`='$bank_pledger_details_id', `name`='$name', `mobile_no`='$mobile_no', `address`='$address', `bank_details`='$bank_details', `pledge_date`='$pledge_date', `bank_loan_no`='$bank_loan_no', `pawn_value`='$pawn_value', `interest_rate`='$interest_rate', `duration_month`='$duration_month', `interest_amount`='$interest_amount', `pledge_due_date`='$pledge_due_date', `additional_charges`='$additional_charges' WHERE `bank_pledge_id`='$edit_id'";
+        $updateBankPledger = "UPDATE `bank_pledger` SET `bank_pledger_details_id`='$bank_pledger_details_id', `name`='$name', `mobile_no`='$mobile_no', `address`='$address', `bank_details`='$bank_details', `pledge_date`='$pledge_date', `bank_loan_no`='$bank_loan_no', `pawn_loan_no`='$pawn_loan_no', `pawn_value`='$pawn_value', `interest_rate`='$interest_rate', `duration_month`='$duration_month', `interest_amount`='$interest_amount', `pledge_due_date`='$pledge_due_date', `additional_charges`='$additional_charges' WHERE `bank_pledge_id`='$edit_id'";
         if ($conn->query($updateBankPledger)) {
             $output["head"]["code"] = 200;
             $output["head"]["msg"] = "Successfully bank_pledger Details Updated";

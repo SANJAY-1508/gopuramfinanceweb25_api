@@ -104,48 +104,94 @@ if (isset($obj->search_text)) {
         $output["head"]["code"] = 200;
         $output["head"]["msg"] = "Success";
         $output["body"]["pawnjewelry"] = [];
-        while ($row = $result->fetch_assoc()) {
-            $row['proof'] = json_decode($row['proof'], true) ?? [];
-            $row['proof_base64code'] = [];
-            $row['aadharproof'] = json_decode($row['aadharproof'], true) ?? [];
-            $row['aadharprood_base64code'] = [];
+       while ($row = $result->fetch_assoc()) {
+    $row['proof'] = json_decode($row['proof'], true) ?? [];
+    $row['proof_base64code'] = [];
+    $row['aadharproof'] = json_decode($row['aadharproof'], true) ?? [];
+    $row['aadharprood_base64code'] = [];
 
-            $full_proof_urls = [];
-            foreach ($row['proof'] as $proof_path) {
-                $prefix = "../";
-                if (strpos($proof_path, $prefix) === 0) {
-                    $cleaned_path = substr($proof_path, strlen($prefix));
-                } else {
-                    $cleaned_path = $proof_path;
-                }
-                $full_url = $base_url . '/' . $cleaned_path;
-                $full_proof_urls[] = $full_url;
-            }
-            $row['proof'] = $full_proof_urls;
+   
+    $row['original_amount_copy'] = $row['original_amount'];
 
-            $full_aadhar_urls = [];
-            foreach ($row['aadharproof'] as $proof_path) {
-                $prefix = "../";
-                if (strpos($proof_path, $prefix) === 0) {
-                    $cleaned_path = substr($proof_path, strlen($prefix));
-                } else {
-                    $cleaned_path = $proof_path;
-                }
-                $full_url = $base_url . '/' . $cleaned_path;
-                $full_aadhar_urls[] = $full_url;
-            }
-            $row['aadharproof'] = $full_aadhar_urls;
-
-            $output["body"]["pawnjewelry"][] = $row;
+    // Proof URLs
+    $full_proof_urls = [];
+    foreach ($row['proof'] as $proof_path) {
+        $prefix = "../";
+        if (strpos($proof_path, $prefix) === 0) {
+            $cleaned_path = substr($proof_path, strlen($prefix));
+        } else {
+            $cleaned_path = $proof_path;
         }
+        $full_url = $base_url . '/' . $cleaned_path;
+        $full_proof_urls[] = $full_url;
+    }
+    $row['proof'] = $full_proof_urls;
+
+    // Aadhar URLs
+    $full_aadhar_urls = [];
+    foreach ($row['aadharproof'] as $proof_path) {
+        $prefix = "../";
+        if (strpos($proof_path, $prefix) === 0) {
+            $cleaned_path = substr($proof_path, strlen($prefix));
+        } else {
+            $cleaned_path = $proof_path;
+        }
+        $full_url = $base_url . '/' . $cleaned_path;
+        $full_aadhar_urls[] = $full_url;
+    }
+    $row['aadharproof'] = $full_aadhar_urls;
+
+    $output["body"]["pawnjewelry"][] = $row;
+}
+
     } else {
         $output["head"]["code"] = 200;
         $output["head"]["msg"] = "No records found";
         $output["body"]["pawnjewelry"] = [];
     }
 }
+
+else if (isset($obj->receipt_no) && isset($obj->action) && $obj->action === "bank_details") {
+    $receipt_no = $conn->real_escape_string($obj->receipt_no);
+    
+    // Sum interest_payment_amount from pawnjewelry
+    $sql_pawn = "SELECT COALESCE(SUM(interest_payment_amount), 0) as pawn_interest 
+                 FROM `pawnjewelry` 
+                 WHERE `delete_at` = 0 AND `receipt_no` = ?";
+    $stmt_pawn = $conn->prepare($sql_pawn);
+    $stmt_pawn->bind_param("s", $receipt_no);
+    $stmt_pawn->execute();
+    $result_pawn = $stmt_pawn->get_result();
+    $pawn_interest = 0;
+    if ($row_pawn = $result_pawn->fetch_assoc()) {
+        $pawn_interest = (float)$row_pawn['pawn_interest'];
+    }
+    $stmt_pawn->close();
+    
+    // Sum interest_income from interest
+    $sql_interest = "SELECT COALESCE(SUM(interest_income), 0) as paid_interest 
+                     FROM `interest` 
+                     WHERE `delete_at` = 0 AND `receipt_no` = ?";
+    $stmt_interest = $conn->prepare($sql_interest);
+    $stmt_interest->bind_param("s", $receipt_no);
+    $stmt_interest->execute();
+    $result_interest = $stmt_interest->get_result();
+    $paid_interest = 0;
+    if ($row_interest = $result_interest->fetch_assoc()) {
+        $paid_interest = (float)$row_interest['paid_interest'];
+    }
+    $stmt_interest->close();
+    
+    $total_interest = $pawn_interest + $paid_interest;
+    
+    $output["head"]["code"] = 200;
+    $output["head"]["msg"] = "Success";
+    $output["body"]["total_interest"] = $total_interest;
+}
+
+
 // Create Pawn Jewelry
-else if (isset($obj->receipt_no) && !isset($obj->edit_pawnjewelry_id)) {
+else if (isset($obj->receipt_no) && !isset($obj->edit_pawnjewelry_id) && isset($obj->action) && $obj->action === "pawn_creation") {
 
     if (!isset($obj->login_id) || empty(trim($obj->login_id))) {
         $output["head"]["code"] = 400;
@@ -899,18 +945,19 @@ else if (isset($obj->delete_pawnjewelry_id)) {
         $output["head"]["code"] = 400;
         $output["head"]["msg"] = "Please provide all required details.";
     }
-} elseif (isset($obj->customer_no)) {
-    $customer_no = $conn->real_escape_string($obj->customer_no);
-    $sql = "SELECT * FROM `pawnjewelry` 
-            WHERE `delete_at` = 0 AND `customer_no` = ? 
-            ORDER BY `id` ASC";
+}
 
+// <<<<<<<<<<===================== List Pawn Jewelry with customer_no Filter =====================>>>>>>>>>>  
+else if (isset($obj->customer_no)) {
+    $customer_no = $conn->real_escape_string($obj->customer_no);
+    $sql = "SELECT * FROM `pawnjewelry`
+            WHERE `delete_at` = 0 AND `customer_no` = ?
+            ORDER BY `id` ASC";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("s", $customer_no);
     $stmt->execute();
     $result = $stmt->get_result();
     $stmt->close();
-
     if ($result === false) {
         error_log("Pawnjewelry query failed: " . $conn->error);
         $output["head"]["code"] = 500;
@@ -918,17 +965,16 @@ else if (isset($obj->delete_pawnjewelry_id)) {
         echo json_encode($output, JSON_NUMERIC_CHECK);
         exit();
     }
-
     if ($result->num_rows > 0) {
         $output["head"]["code"] = 200;
         $output["head"]["msg"] = "Success";
         $output["body"]["pawnjewelry"] = [];
         while ($row = $result->fetch_assoc()) {
+            $row['original_amount_copy'] = $row['original_amount'];
             $row['proof'] = json_decode($row['proof'], true) ?? [];
             $row['proof_base64code'] = [];
             $row['aadharproof'] = json_decode($row['aadharproof'], true) ?? [];
             $row['aadharprood_base64code'] = [];
-
             $full_proof_urls = [];
             foreach ($row['proof'] as $proof_path) {
                 $prefix = "../";
@@ -941,7 +987,6 @@ else if (isset($obj->delete_pawnjewelry_id)) {
                 $full_proof_urls[] = $full_url;
             }
             $row['proof'] = $full_proof_urls;
-
             $full_aadhar_urls = [];
             foreach ($row['aadharproof'] as $proof_path) {
                 $prefix = "../";
@@ -955,6 +1000,27 @@ else if (isset($obj->delete_pawnjewelry_id)) {
             }
             $row['aadharproof'] = $full_aadhar_urls;
 
+            // Fetch matching bank_pledger records based on receipt_no = pawn_loan_no
+            $receipt_no = $row['receipt_no'];
+            $sql_bank = "SELECT * FROM `bank_pledger`
+                         WHERE `delete_at` = 0 AND `pawn_loan_no` = ?";
+            $stmt_bank = $conn->prepare($sql_bank);
+            if ($stmt_bank === false) {
+                error_log("Bank_pledger prepare failed: " . $conn->error);
+                $row['bank_pledger'] = []; // Fallback to empty array on error
+            } else {
+                $stmt_bank->bind_param("s", $receipt_no);
+                $stmt_bank->execute();
+                $result_bank = $stmt_bank->get_result();
+                $row['bank_pledger'] = [];
+                if ($result_bank !== false) {
+                    while ($bank_row = $result_bank->fetch_assoc()) {
+                        $row['bank_pledger'][] = $bank_row;
+                    }
+                }
+                $stmt_bank->close();
+            }
+
             $output["body"]["pawnjewelry"][] = $row;
         }
     } else {
@@ -962,7 +1028,10 @@ else if (isset($obj->delete_pawnjewelry_id)) {
         $output["head"]["msg"] = "No records found for this customer";
         $output["body"]["pawnjewelry"] = [];
     }
-} else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
+}
+
+// <<<<<<<<<<===================== List interest_report =====================>>>>>>>>>>  
+else if (isset($obj->report_type) && $obj->report_type === 'interest_report') {
     $receipt_no = isset($obj->receipt_no) ? trim($conn->real_escape_string($obj->receipt_no)) : '';
     $today = new DateTime();
 
